@@ -1,10 +1,10 @@
-# GRDF - Dashboard de Gestion des Bons de Travail
+# DEMAT-BT-BDSN - Dématérialisation des Bons de Travail
 
 Interface web de gestion des bons de travail (BT) pour les managers et chefs d'équipe de GRDF - AI Boucle de Seine Nord.
 
 ## 🚀 Démo
 
-Accéder à la démo : [https://votre-username.github.io/grdf-dashboard/](https://votre-username.github.io/grdf-dashboard/)
+Accéder à la démo : [https://votre-username.github.io/demat-bt-bdsn/](https://votre-username.github.io/demat-bt-bdsn/)
 
 ## 📋 Fonctionnalités
 
@@ -35,7 +35,7 @@ Accéder à la démo : [https://votre-username.github.io/grdf-dashboard/](https:
 
 1. Cloner le repository :
 ```bash
-git clone https://github.com/votre-username/grdf-dashboard.git
+git clone https://github.com/votre-username/demat-bt-bdsn.git
 ```
 
 2. Ouvrir `index.html` dans un navigateur
@@ -44,14 +44,14 @@ Aucune dépendance externe n'est requise - le dashboard fonctionne entièrement 
 
 ## 📦 Déploiement sur GitHub Pages
 
-1. Créer un repository sur GitHub
+1. Créer un repository sur GitHub nommé `demat-bt-bdsn`
 2. Pousser le code :
 ```bash
 git init
 git add .
-git commit -m "Initial commit - GRDF Dashboard"
+git commit -m "Initial commit - DEMAT BT BDSN"
 git branch -M main
-git remote add origin https://github.com/votre-username/grdf-dashboard.git
+git remote add origin https://github.com/votre-username/demat-bt-bdsn.git
 git push -u origin main
 ```
 
@@ -61,7 +61,7 @@ git push -u origin main
    - Branch : main / (root)
    - Save
 
-Le site sera disponible à `https://votre-username.github.io/grdf-dashboard/`
+Le site sera disponible à `https://votre-username.github.io/demat-bt-bdsn/`
 
 ## 🎨 Technologies utilisées
 
