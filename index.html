@@ -116,18 +116,21 @@
         }
 
         .logo-icon {
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, var(--grdf-blue), var(--grdf-green));
+            width: 44px;
+            height: 44px;
             border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-family: var(--font-mono);
-            font-weight: 700;
-            font-size: 14px;
-            color: white;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+            overflow: hidden;
+            background: white;
+            padding: 4px;
+        }
+
+        .logo-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
         }
 
         .logo-text {
@@ -1124,7 +1127,9 @@
     <header class="header">
         <div class="header-left">
             <div class="logo">
-                <div class="logo-icon">GRD</div>
+                <div class="logo-icon">
+                    <img src="https://raw.githubusercontent.com/rachidben91-web/Lecteur-plan-terrain/main/assets/logo-grdf-bdsn1.png" alt="GRDF BDSN">
+                </div>
                 <div class="logo-text">
                     <span class="logo-title">Gestion des BT</span>
                     <span class="logo-subtitle">AI BOUCLE DE SEINE NORD</span>
@@ -1208,7 +1213,23 @@
 
             <!-- Team List -->
             <div class="sidebar-section">
-                <div class="sidebar-title">Équipe du jour</div>
+                <div class="sidebar-title">Équipe (101 agents)</div>
+                <div class="filter-group" style="margin-bottom: var(--space-sm);">
+                    <select class="filter-select" id="filterSite">
+                        <option value="all">Tous les sites</option>
+                        <option value="VLG">Villeneuve-la-Garenne</option>
+                        <option value="SAR">Sartrouville</option>
+                    </select>
+                </div>
+                <div class="filter-group" style="margin-bottom: var(--space-sm);">
+                    <select class="filter-select" id="filterRole">
+                        <option value="all">Tous les rôles</option>
+                        <option value="ME">Managers d'équipe</option>
+                        <option value="RE">Référents d'équipe</option>
+                        <option value="RT">Référents techniques</option>
+                        <option value="TG">Techniciens Gaz</option>
+                    </select>
+                </div>
                 <div class="tech-list" id="techList">
                     <!-- Populated by JS -->
                 </div>
@@ -1661,29 +1682,140 @@
             }
         ];
 
-        // Technicians data
+        // Technicians data - Liste complète MAIA VLG + Sartrouville
         const technicians = [
-            { name: 'ABIR Bilal', role: 'RE', status: 'busy', color: '#00A3E0' },
-            { name: 'ASSOUMO Alain Bruno', role: 'OIS', status: 'busy', color: '#9B59B6' },
-            { name: 'BENTOUMI Mounir', role: 'CT', status: 'busy', color: '#F5A623' },
-            { name: 'CAUSSARIEU Thomas', role: 'Agent', status: 'busy', color: '#78BE20' },
-            { name: 'CISSE Moussa', role: 'Agent', status: 'busy', color: '#E74C3C' },
-            { name: 'CORREIA Christopher', role: 'OIS', status: 'busy', color: '#3498DB' },
-            { name: 'DESFONTAINES Richard', role: 'OIS', status: 'busy', color: '#2ECC71' },
-            { name: 'DIALLO Amadou', role: 'OIS', status: 'busy', color: '#E67E22' },
-            { name: 'HAJJI Toufik', role: 'OIS', status: 'busy', color: '#1ABC9C' },
-            { name: 'HENRY Alexandre', role: 'OIS', status: 'busy', color: '#9C27B0' },
-            { name: 'KHALLADI Aleksandra', role: 'OIS', status: 'busy', color: '#E91E63' },
-            { name: 'KLEIN Julien', role: 'CT', status: 'busy', color: '#1ABC9C' },
-            { name: 'LE BOMIN Thomas', role: 'OIS', status: 'busy', color: '#3F51B5' },
-            { name: 'NHIV Narith', role: 'RE', status: 'busy', color: '#9B59B6' },
-            { name: 'ROBICHON Jordan', role: 'OIS', status: 'busy', color: '#00BCD4' },
-            { name: 'SALEP Alexandre', role: 'CT', status: 'busy', color: '#00BCD4' },
-            { name: 'SEGUY Alexis', role: 'Agent', status: 'busy', color: '#E67E22' },
-            { name: 'SISSOKO Seran', role: 'OIS', status: 'busy', color: '#795548' },
-            { name: 'STEHELYN Hakim', role: 'OIS', status: 'busy', color: '#FF5722' },
-            { name: 'TELDJI Djamel', role: 'OIS', status: 'busy', color: '#4CAF50' },
-            { name: 'VERTIL Wilco', role: 'OIS', status: 'busy', color: '#607D8B' }
+            // Management
+            { name: 'THERY Franck', nni: 'C80448', role: 'Chef d\'agence', site: 'VLG', manager: 'Tilila Adkime', status: 'available', color: '#00A3E0' },
+            { name: 'GUENFOUD Heidine', nni: 'B65570', role: 'Adjoint CA', site: 'VLG', manager: 'Franck Théry', status: 'available', color: '#0077A8' },
+            { name: 'GOURVENEC Brieuc', nni: 'F68078', role: 'Adjoint CA', site: 'SAR', manager: 'Franck Théry', status: 'available', color: '#0077A8' },
+            
+            // Managers d'équipe VLG
+            { name: 'BEN DAOUD Rachid', nni: 'J60772', role: 'ME', site: 'VLG', manager: 'Franck Théry', status: 'busy', color: '#9B59B6' },
+            { name: 'NHIV Narith', nni: 'F23382', role: 'ME', site: 'VLG', manager: 'Heidine Guenfoud', status: 'busy', color: '#9B59B6' },
+            { name: 'ZERAMDINI Zied', nni: 'J00654', role: 'ME', site: 'VLG', manager: 'Heidine Guenfoud', status: 'busy', color: '#9B59B6' },
+            { name: 'DEBOUSSI Karim', nni: 'J00354', role: 'ME', site: 'VLG', manager: 'Heidine Guenfoud', status: 'busy', color: '#9B59B6' },
+            { name: 'ROMAO Laetitia', nni: 'C53976', role: 'ME', site: 'VLG', manager: 'Heidine Guenfoud', status: 'busy', color: '#9B59B6' },
+            { name: 'ARBIB Mustapha', nni: 'I73173', role: 'ME', site: 'VLG', manager: 'Heidine Guenfoud', status: 'busy', color: '#9B59B6' },
+            { name: 'SALEMKOUR Sabrina', nni: 'E41148', role: 'ME', site: 'VLG', manager: 'Heidine Guenfoud', status: 'busy', color: '#9B59B6' },
+            
+            // Manager d'équipe SAR
+            { name: 'YAGOUBI Walid', nni: 'G58854', role: 'ME', site: 'SAR', manager: 'Brieuc Gourvénec', status: 'busy', color: '#9B59B6' },
+            { name: 'ICHOUHID-AYADI Milia', nni: 'J57273', role: 'ME', site: 'SAR', manager: 'Brieuc Gourvénec', status: 'busy', color: '#9B59B6' },
+            
+            // Référents d'équipe
+            { name: 'KHALI Mounir', nni: 'H61582', role: 'RE', site: 'VLG', manager: 'Narith Nhiv', status: 'busy', color: '#E67E22' },
+            { name: 'BETTENCOURT DIAS Gil', nni: 'G48754', role: 'RE', site: 'VLG', manager: 'Rachid Ben Daoud', status: 'busy', color: '#E67E22' },
+            { name: 'LE BRIS Christophe', nni: 'E82673', role: 'RE', site: 'VLG', manager: 'Sabrina Salemkour', status: 'busy', color: '#E67E22' },
+            { name: 'N\'TUMBA BYN Rudy', nni: 'J29155', role: 'RE', site: 'VLG', manager: 'Karim Deboussi', status: 'busy', color: '#E67E22' },
+            { name: 'MILLET Romain', nni: 'A19376', role: 'RE', site: 'SAR', manager: 'Walid Yagoubi', status: 'busy', color: '#E67E22' },
+            { name: 'OSSOU Ludovic', nni: 'J73272', role: 'RE', site: 'SAR', manager: 'Milia Ichouhid-Ayadi', status: 'busy', color: '#E67E22' },
+            
+            // Référents techniques
+            { name: 'BOIVIN Cyril', nni: 'A61654', role: 'RT', site: 'VLG', manager: 'Mustapha Arbib', status: 'available', color: '#1ABC9C' },
+            { name: 'ELIASAINT Ruth', nni: 'D89183', role: 'RT', site: 'VLG', manager: 'Rachid Ben Daoud', status: 'available', color: '#1ABC9C' },
+            { name: 'ROUGERON Anthony', nni: 'D03378', role: 'RT', site: 'VLG', manager: 'Zied Zeramdini', status: 'available', color: '#1ABC9C' },
+            { name: 'RULLE Guillaume', nni: 'G27777', role: 'RT', site: 'VLG', manager: 'Karim Deboussi', status: 'available', color: '#1ABC9C' },
+            { name: 'SIMON Thomas', nni: 'H12877', role: 'RT', site: 'VLG', manager: 'Zied Zeramdini', status: 'available', color: '#1ABC9C' },
+            { name: 'STROESSLER Renaud', nni: 'G84272', role: 'RT', site: 'VLG', manager: 'Zied Zeramdini', status: 'available', color: '#1ABC9C' },
+            { name: 'BAUNIER Jennifer', nni: 'G86275', role: 'RT', site: 'SAR', manager: 'Milia Ichouhid-Ayadi', status: 'available', color: '#1ABC9C' },
+            { name: 'DEGOUY Grégory', nni: 'B06751', role: 'RT', site: 'SAR', manager: 'Milia Ichouhid-Ayadi', status: 'available', color: '#1ABC9C' },
+            { name: 'MERCEY Bruno', nni: 'H86956', role: 'RT', site: 'SAR', manager: 'Walid Yagoubi', status: 'available', color: '#1ABC9C' },
+            { name: 'SAMPAIO Anthony', nni: 'I65172', role: 'RT', site: 'SAR', manager: 'Walid Yagoubi', status: 'available', color: '#1ABC9C' },
+            
+            // Techniciens Gaz VLG - Équipe Narith Nhiv
+            { name: 'ABIR Bilal', nni: 'H26975', role: 'TG', site: 'VLG', manager: 'Laetitia Romao', status: 'busy', color: '#3498DB' },
+            { name: 'CAUSSARIEU Thomas', nni: 'A94073', role: 'TG', site: 'VLG', manager: 'Narith Nhiv', status: 'busy', color: '#78BE20' },
+            { name: 'DESFONTAINES Richard', nni: 'E51772', role: 'TG', site: 'VLG', manager: 'Narith Nhiv', status: 'busy', color: '#2ECC71' },
+            { name: 'FOURMONT Cédric', nni: 'I20971', role: 'TG', site: 'VLG', manager: 'Narith Nhiv', status: 'busy', color: '#27AE60' },
+            { name: 'HARBOULI Rachid', nni: 'H49056', role: 'TG', site: 'VLG', manager: 'Narith Nhiv', status: 'busy', color: '#16A085' },
+            { name: 'JOUANNE Alexandre', nni: 'C20671', role: 'TG', site: 'VLG', manager: 'Narith Nhiv', status: 'busy', color: '#1ABC9C' },
+            { name: 'KLEIN Julien', nni: 'J24255', role: 'TG', site: 'VLG', manager: 'Narith Nhiv', status: 'busy', color: '#00BCD4' },
+            { name: 'LE BOMIN Thomas', nni: 'G47781', role: 'TG', site: 'VLG', manager: 'Narith Nhiv', status: 'busy', color: '#03A9F4' },
+            { name: 'VAN-UXEN Robert', nni: 'J14432', role: 'TG', site: 'VLG', manager: 'Narith Nhiv', status: 'busy', color: '#2196F3' },
+            
+            // Techniciens Gaz VLG - Équipe Zied Zeramdini
+            { name: 'ARIF Kamel', nni: 'F62981', role: 'TG', site: 'VLG', manager: 'Zied Zeramdini', status: 'busy', color: '#9C27B0' },
+            { name: 'DUCOLLET Jérémy', nni: 'J04081', role: 'TG', site: 'VLG', manager: 'Zied Zeramdini', status: 'busy', color: '#673AB7' },
+            { name: 'GALLEDOU Sikhou', nni: 'A67070', role: 'TG', site: 'VLG', manager: 'Zied Zeramdini', status: 'busy', color: '#7C4DFF' },
+            { name: 'HENRY Alexandre', nni: 'C33576', role: 'TG', site: 'VLG', manager: 'Zied Zeramdini', status: 'busy', color: '#536DFE' },
+            { name: 'HUET Frédéric', nni: 'E82472', role: 'TG', site: 'VLG', manager: 'Zied Zeramdini', status: 'busy', color: '#448AFF' },
+            { name: 'SEGUY Alexis', nni: 'C35074', role: 'TG', site: 'VLG', manager: 'Zied Zeramdini', status: 'busy', color: '#E67E22' },
+            { name: 'SISSOKO Tiémoko', nni: 'E06180', role: 'TG', site: 'VLG', manager: 'Zied Zeramdini', status: 'busy', color: '#F39C12' },
+            
+            // Techniciens Gaz VLG - Équipe Karim Deboussi
+            { name: 'BENALLOU Radouane', nni: 'A02277', role: 'TG', site: 'VLG', manager: 'Karim Deboussi', status: 'busy', color: '#E74C3C' },
+            { name: 'BENTOUMI Mounir', nni: 'E50275', role: 'TG', site: 'VLG', manager: 'Karim Deboussi', status: 'busy', color: '#F5A623' },
+            { name: 'CISSE Amadou', nni: 'B99384', role: 'TG', site: 'VLG', manager: 'Karim Deboussi', status: 'busy', color: '#FF5722' },
+            { name: 'FELHI Mohamed', nni: 'I16183', role: 'TG', site: 'VLG', manager: 'Karim Deboussi', status: 'busy', color: '#FF7043' },
+            { name: 'MAGASSOUBA Mohamed', nni: 'C30671', role: 'TG', site: 'VLG', manager: 'Karim Deboussi', status: 'busy', color: '#FF8A65' },
+            { name: 'SALEP Alexandre', nni: 'G82872', role: 'TG', site: 'VLG', manager: 'Karim Deboussi', status: 'busy', color: '#00BCD4' },
+            { name: 'TAKROUNI Jamila', nni: 'H64778', role: 'TG', site: 'VLG', manager: 'Karim Deboussi', status: 'busy', color: '#E91E63' },
+            
+            // Techniciens Gaz VLG - Équipe Laetitia Romao
+            { name: 'CISSE Moussa', nni: 'I13252', role: 'TG', site: 'VLG', manager: 'Laetitia Romao', status: 'busy', color: '#E74C3C' },
+            { name: 'CORREIA Christopher', nni: 'A37272', role: 'TG', site: 'VLG', manager: 'Laetitia Romao', status: 'busy', color: '#3498DB' },
+            { name: 'DEBY Medhi', nni: 'J19576', role: 'TG', site: 'VLG', manager: 'Laetitia Romao', status: 'busy', color: '#2980B9' },
+            { name: 'DUBOIS Guillaume', nni: 'E34879', role: 'TG', site: 'VLG', manager: 'Laetitia Romao', status: 'busy', color: '#1F618D' },
+            { name: 'SHEIKH Arslan', nni: 'F80482', role: 'TG', site: 'VLG', manager: 'Laetitia Romao', status: 'busy', color: '#154360' },
+            { name: 'TCHERNIAWSKY Christophe', nni: 'C18572', role: 'TG', site: 'VLG', manager: 'Laetitia Romao', status: 'busy', color: '#5D6D7E' },
+            
+            // Techniciens Gaz VLG - Équipe Mustapha Arbib
+            { name: 'ASSOUMO Alain-Bruno', nni: 'D45777', role: 'TG', site: 'VLG', manager: 'Mustapha Arbib', status: 'busy', color: '#9B59B6' },
+            { name: 'DADSI Amine', nni: 'E23680', role: 'TG', site: 'VLG', manager: 'Mustapha Arbib', status: 'busy', color: '#8E44AD' },
+            { name: 'ESSOBAT NFONZOCK Judith', nni: 'I20180', role: 'TG', site: 'VLG', manager: 'Mustapha Arbib', status: 'busy', color: '#9B59B6' },
+            { name: 'HAJJI Toufik', nni: 'C53276', role: 'TG', site: 'VLG', manager: 'Mustapha Arbib', status: 'busy', color: '#AF7AC5' },
+            { name: 'MAMMOU Mounir', nni: 'G90777', role: 'TG', site: 'VLG', manager: 'Mustapha Arbib', status: 'busy', color: '#BB8FCE' },
+            { name: 'SISSOKO Seran', nni: 'F86682', role: 'TG', site: 'VLG', manager: 'Mustapha Arbib', status: 'busy', color: '#795548' },
+            { name: 'TELDJI Djamel', nni: 'H11281', role: 'TG', site: 'VLG', manager: 'Mustapha Arbib', status: 'busy', color: '#4CAF50' },
+            { name: 'TEMUR Berkay Can', nni: 'X01563', role: 'TG', site: 'VLG', manager: 'Mustapha Arbib', status: 'busy', color: '#8BC34A' },
+            
+            // Techniciens Gaz VLG - Équipe Sabrina Salemkour
+            { name: 'DIALLO Amadou', nni: 'A73777', role: 'TG', site: 'VLG', manager: 'Sabrina Salemkour', status: 'busy', color: '#FF9800' },
+            { name: 'GNEBIO Noël', nni: 'G59180', role: 'TG', site: 'VLG', manager: 'Sabrina Salemkour', status: 'busy', color: '#FFA726' },
+            { name: 'GUFFROY Maxime', nni: 'G81772', role: 'TG', site: 'VLG', manager: 'Sabrina Salemkour', status: 'busy', color: '#FFB74D' },
+            { name: 'THE Romain', nni: 'E23670', role: 'TG', site: 'VLG', manager: 'Sabrina Salemkour', status: 'busy', color: '#FFCC80' },
+            { name: 'TOUIL Mourad', nni: 'D80482', role: 'TG', site: 'VLG', manager: 'Sabrina Salemkour', status: 'busy', color: '#FFE0B2' },
+            { name: 'VERTIL Wilco', nni: 'A77455', role: 'TG', site: 'VLG', manager: 'Sabrina Salemkour', status: 'busy', color: '#607D8B' },
+            { name: 'WELLE David', nni: 'A31480', role: 'TG', site: 'VLG', manager: 'Sabrina Salemkour', status: 'busy', color: '#78909C' },
+            
+            // Techniciens Gaz VLG - Équipe Rachid Ben Daoud
+            { name: 'BEEHARRY-PANRAY Sanjeet', nni: 'B09571', role: 'TG', site: 'VLG', manager: 'Rachid Ben Daoud', status: 'busy', color: '#009688' },
+            { name: 'BRIET Dylan', nni: 'C38084', role: 'TG', site: 'VLG', manager: 'Rachid Ben Daoud', status: 'busy', color: '#00796B' },
+            { name: 'NAVAUX Aurélien', nni: 'A39083', role: 'TG', site: 'VLG', manager: 'Rachid Ben Daoud', status: 'busy', color: '#004D40' },
+            { name: 'ROBICHON Jordan', nni: 'A14356', role: 'TG', site: 'VLG', manager: 'Rachid Ben Daoud', status: 'busy', color: '#00BFA5' },
+            { name: 'STEHELYN Hakim', nni: 'E10173', role: 'TG', site: 'VLG', manager: 'Rachid Ben Daoud', status: 'busy', color: '#FF5722' },
+            
+            // Techniciens Gaz SAR - Équipe Walid Yagoubi
+            { name: 'ARKAN Mesut', nni: 'C61984', role: 'TG', site: 'SAR', manager: 'Walid Yagoubi', status: 'busy', color: '#FF5722' },
+            { name: 'BAZZI Yassine', nni: 'A67876', role: 'TG', site: 'SAR', manager: 'Walid Yagoubi', status: 'busy', color: '#E64A19' },
+            { name: 'BORG Steven', nni: 'A27971', role: 'TG', site: 'SAR', manager: 'Walid Yagoubi', status: 'busy', color: '#D84315' },
+            { name: 'CLINQUART Cédric', nni: 'H47480', role: 'TG', site: 'SAR', manager: 'Walid Yagoubi', status: 'busy', color: '#BF360C' },
+            { name: 'DRAME Yakhouba', nni: 'J72179', role: 'TG', site: 'SAR', manager: 'Walid Yagoubi', status: 'busy', color: '#8D6E63' },
+            { name: 'DUBOIS Fabien', nni: 'D29157', role: 'TG', site: 'SAR', manager: 'Walid Yagoubi', status: 'busy', color: '#6D4C41' },
+            { name: 'GLAIZE Cédric', nni: 'J03649', role: 'TG', site: 'SAR', manager: 'Walid Yagoubi', status: 'busy', color: '#5D4037' },
+            { name: 'MOCKBEL Abdelkrim', nni: 'A20571', role: 'TG', site: 'SAR', manager: 'Walid Yagoubi', status: 'busy', color: '#4E342E' },
+            { name: 'THIBOYEAU Mickael', nni: 'J36853', role: 'TG', site: 'SAR', manager: 'Walid Yagoubi', status: 'busy', color: '#3E2723' },
+            
+            // Techniciens Gaz SAR - Équipe Milia Ichouhid-Ayadi
+            { name: 'BIELEU LEUKOUE Serge', nni: 'F10684', role: 'TG', site: 'SAR', manager: 'Milia Ichouhid-Ayadi', status: 'busy', color: '#673AB7' },
+            { name: 'BLIN Maxime', nni: 'J90872', role: 'TG', site: 'SAR', manager: 'Milia Ichouhid-Ayadi', status: 'busy', color: '#512DA8' },
+            { name: 'GOMIS Lucien', nni: 'I08754', role: 'TG', site: 'SAR', manager: 'Milia Ichouhid-Ayadi', status: 'busy', color: '#4527A0' },
+            { name: 'KITENGE MULAMBULUA Pagnol', nni: 'J97683', role: 'TG', site: 'SAR', manager: 'Milia Ichouhid-Ayadi', status: 'busy', color: '#311B92' },
+            { name: 'LARIBE Joris', nni: 'G38382', role: 'TG', site: 'SAR', manager: 'Milia Ichouhid-Ayadi', status: 'busy', color: '#7C4DFF' },
+            { name: 'PICCININ Alexandre', nni: 'B51877', role: 'TG', site: 'SAR', manager: 'Milia Ichouhid-Ayadi', status: 'busy', color: '#651FFF' },
+            { name: 'SEIDY Mahamadou', nni: 'G71881', role: 'TG', site: 'SAR', manager: 'Milia Ichouhid-Ayadi', status: 'busy', color: '#6200EA' },
+            { name: 'TAVARES Steven', nni: 'A38084', role: 'TG', site: 'SAR', manager: 'Milia Ichouhid-Ayadi', status: 'busy', color: '#AA00FF' },
+            { name: 'THIEBAUT Florian', nni: 'E24956', role: 'TG', site: 'SAR', manager: 'Milia Ichouhid-Ayadi', status: 'busy', color: '#D500F9' },
+            
+            // Appui
+            { name: 'KHALLADI Aleksandra', nni: 'F54357', role: 'Appui TA', site: 'VLG', manager: 'Mustapha Arbib', status: 'busy', color: '#E91E63' },
+            { name: 'EKOUME Erika', nni: 'J64778', role: 'Appui Admin', site: 'VLG', manager: 'Franck Théry', status: 'available', color: '#F06292' },
+            { name: 'LOYER Thibauld', nni: 'X01635', role: 'Appui CI', site: 'VLG', manager: 'Franck Théry', status: 'available', color: '#EC407A' },
+            { name: 'BONNETERRE Jean-Charles', nni: 'B71532', role: 'Appui Pro', site: 'VLG', manager: 'Heidine Guenfoud', status: 'available', color: '#AD1457' },
+            
+            // Autres
+            { name: 'MALEC Natacha', nni: 'F86972', role: 'Autre', site: 'VLG', manager: 'Narith Nhiv', status: 'available', color: '#880E4F' },
+            { name: 'DUBO Romain', nni: 'D10385', role: 'Apprenti', site: 'VLG', manager: 'Narith Nhiv', status: 'busy', color: '#C2185B' }
         ];
 
         // ==================== FUNCTIONS ====================
@@ -1692,19 +1824,36 @@
             return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
         }
 
-        function renderTechList() {
+        function renderTechList(filterSite = 'all', filterRole = 'all') {
+            let filtered = technicians;
+            
+            if (filterSite !== 'all') {
+                filtered = filtered.filter(t => t.site === filterSite);
+            }
+            if (filterRole !== 'all') {
+                filtered = filtered.filter(t => t.role === filterRole);
+            }
+            
             const container = document.getElementById('techList');
-            container.innerHTML = technicians.slice(0, 10).map(tech => `
-                <div class="tech-item">
+            container.innerHTML = filtered.slice(0, 20).map(tech => `
+                <div class="tech-item" title="${tech.manager ? 'Manager: ' + tech.manager : ''}">
                     <div class="tech-avatar" style="background: ${tech.color};">${getInitials(tech.name)}</div>
                     <div class="tech-info">
                         <div class="tech-name">${tech.name}</div>
-                        <div class="tech-role">${tech.role}</div>
+                        <div class="tech-role">${tech.role} • ${tech.nni} • ${tech.site}</div>
                     </div>
                     <div class="tech-status ${tech.status}"></div>
                 </div>
-            `).join('');
+            `).join('') + (filtered.length > 20 ? `<div style="text-align: center; padding: 8px; color: var(--text-muted); font-size: 11px;">+ ${filtered.length - 20} autres agents</div>` : '');
         }
+        
+        // Filtres équipe
+        document.getElementById('filterSite').addEventListener('change', () => {
+            renderTechList(document.getElementById('filterSite').value, document.getElementById('filterRole').value);
+        });
+        document.getElementById('filterRole').addEventListener('change', () => {
+            renderTechList(document.getElementById('filterSite').value, document.getElementById('filterRole').value);
+        });
 
         function renderBTGrid(data = btData) {
             const container = document.getElementById('btGrid');
