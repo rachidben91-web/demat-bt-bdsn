@@ -1,0 +1,1548 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GRDF BDSN - Briefing Équipe</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* GRDF Corporate Colors */
+            --grdf-blue: #00A3E0;
+            --grdf-blue-dark: #0077A8;
+            --grdf-green: #78BE20;
+            --grdf-green-dark: #5A9A10;
+            --grdf-orange: #F5A623;
+            --grdf-red: #E74C3C;
+            
+            /* Dark Theme for visibility */
+            --bg-primary: #0a0e14;
+            --bg-secondary: #111820;
+            --bg-tertiary: #1a2332;
+            --bg-card: #1e2a3a;
+            --border-color: #2d3a4d;
+            --border-accent: #3d4a5d;
+            
+            /* Text - High contrast */
+            --text-primary: #ffffff;
+            --text-secondary: #a0aec0;
+            --text-muted: #718096;
+            
+            /* Status Colors - Vibrant */
+            --status-pending: #F5A623;
+            --status-inprogress: #00A3E0;
+            --status-completed: #78BE20;
+            
+            /* Type Colors */
+            --type-mhs: #E74C3C;
+            --type-mes: #78BE20;
+            --type-maintenance: #00A3E0;
+            --type-adf: #F5A623;
+            --type-formation: #9B59B6;
+            --type-administratif: #95A5A6;
+            
+            /* Fonts */
+            --font-mono: 'JetBrains Mono', monospace;
+            --font-sans: 'Plus Jakarta Sans', sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: var(--font-sans);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+
+        /* ==================== MAIN LAYOUT ==================== */
+        .app {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* ==================== HEADER ==================== */
+        .header {
+            height: 100px;
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            border-bottom: 3px solid var(--grdf-blue);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 40px;
+            flex-shrink: 0;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 30px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .logo-icon {
+            width: 70px;
+            height: 70px;
+            border-radius: 12px;
+            overflow: hidden;
+            background: white;
+            padding: 6px;
+            box-shadow: 0 4px 20px rgba(0,163,224,0.3);
+        }
+
+        .logo-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .logo-text {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .logo-title {
+            font-size: 32px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            background: linear-gradient(135deg, var(--grdf-blue), var(--grdf-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .logo-subtitle {
+            font-family: var(--font-mono);
+            font-size: 16px;
+            color: var(--text-secondary);
+            letter-spacing: 0.1em;
+        }
+
+        .header-center {
+            display: flex;
+            align-items: center;
+            gap: 40px;
+        }
+
+        .date-display {
+            text-align: center;
+        }
+
+        .date-day {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .date-full {
+            font-size: 18px;
+            color: var(--text-secondary);
+        }
+
+        .clock {
+            font-family: var(--font-mono);
+            font-size: 56px;
+            font-weight: 700;
+            color: var(--grdf-blue);
+            text-shadow: 0 0 30px rgba(0,163,224,0.5);
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 30px;
+        }
+
+        .stats-row {
+            display: flex;
+            gap: 20px;
+        }
+
+        .stat-box {
+            background: var(--bg-card);
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            padding: 12px 24px;
+            text-align: center;
+            min-width: 100px;
+            transition: all 0.3s;
+        }
+
+        .stat-box:hover {
+            border-color: var(--grdf-blue);
+            transform: scale(1.05);
+        }
+
+        .stat-value {
+            font-family: var(--font-mono);
+            font-size: 36px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .stat-value.blue { color: var(--grdf-blue); }
+        .stat-value.green { color: var(--grdf-green); }
+        .stat-value.orange { color: var(--grdf-orange); }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 4px;
+        }
+
+        .live-badge {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(120,190,32,0.15);
+            border: 2px solid var(--grdf-green);
+            border-radius: 30px;
+            padding: 10px 24px;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--grdf-green);
+        }
+
+        .live-dot {
+            width: 12px;
+            height: 12px;
+            background: var(--grdf-green);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(120,190,32,0.7); }
+            50% { opacity: 0.8; box-shadow: 0 0 0 10px rgba(120,190,32,0); }
+        }
+
+        /* ==================== CONTENT AREA ==================== */
+        .content {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* ==================== TEAMS SIDEBAR ==================== */
+        .teams-sidebar {
+            width: 280px;
+            background: var(--bg-secondary);
+            border-right: 2px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-tertiary);
+        }
+
+        .sidebar-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .team-filters {
+            display: flex;
+            gap: 8px;
+        }
+
+        .filter-btn {
+            flex: 1;
+            padding: 10px;
+            background: var(--bg-card);
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font-family: var(--font-sans);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .filter-btn:hover {
+            border-color: var(--grdf-blue);
+            color: var(--text-primary);
+        }
+
+        .filter-btn.active {
+            background: var(--grdf-blue);
+            border-color: var(--grdf-blue);
+            color: white;
+        }
+
+        .teams-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+        }
+
+        .team-group {
+            margin-bottom: 16px;
+        }
+
+        .team-group-title {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 8px;
+        }
+
+        .team-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px;
+            background: var(--bg-card);
+            border: 2px solid transparent;
+            border-radius: 10px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .team-item:hover {
+            border-color: var(--border-accent);
+            transform: translateX(4px);
+        }
+
+        .team-item.active {
+            border-color: var(--grdf-blue);
+            background: rgba(0,163,224,0.1);
+        }
+
+        .team-item.manager {
+            border-left: 4px solid var(--grdf-orange);
+        }
+
+        .team-avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .team-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .team-name {
+            font-size: 15px;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .team-role {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .team-count {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            color: var(--grdf-blue);
+            background: rgba(0,163,224,0.15);
+            padding: 4px 10px;
+            border-radius: 12px;
+        }
+
+        /* ==================== MAIN TIMELINE ==================== */
+        .timeline-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: var(--bg-primary);
+        }
+
+        .timeline-header {
+            display: flex;
+            background: var(--bg-tertiary);
+            border-bottom: 2px solid var(--border-color);
+            flex-shrink: 0;
+        }
+
+        .timeline-corner {
+            width: 220px;
+            min-width: 220px;
+            padding: 16px 20px;
+            font-weight: 700;
+            font-size: 16px;
+            border-right: 2px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .timeline-hours {
+            flex: 1;
+            display: flex;
+        }
+
+        .timeline-hour {
+            flex: 1;
+            padding: 16px 0;
+            text-align: center;
+            font-family: var(--font-mono);
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            border-right: 1px solid var(--border-color);
+            position: relative;
+        }
+
+        .timeline-hour.current {
+            color: var(--grdf-blue);
+            background: rgba(0,163,224,0.1);
+        }
+
+        .timeline-hour.current::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            width: 3px;
+            height: 100vh;
+            background: var(--grdf-blue);
+            opacity: 0.5;
+            transform: translateX(-50%);
+            z-index: 10;
+        }
+
+        .timeline-body {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        .timeline-row {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            min-height: 70px;
+            transition: all 0.2s;
+        }
+
+        .timeline-row:hover {
+            background: var(--bg-secondary);
+        }
+
+        .timeline-row.selected {
+            background: rgba(0,163,224,0.1);
+        }
+
+        .timeline-agent {
+            width: 220px;
+            min-width: 220px;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-right: 2px solid var(--border-color);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .timeline-agent:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .agent-avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .agent-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .agent-name {
+            font-size: 14px;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .agent-meta {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+        }
+
+        .timeline-slots {
+            flex: 1;
+            display: flex;
+            position: relative;
+        }
+
+        .timeline-slot {
+            flex: 1;
+            border-right: 1px solid var(--border-color);
+            min-height: 70px;
+        }
+
+        .timeline-slot:nth-child(even) {
+            background: rgba(0,0,0,0.15);
+        }
+
+        /* BT Blocks */
+        .bt-block {
+            position: absolute;
+            top: 8px;
+            bottom: 8px;
+            border-radius: 8px;
+            padding: 8px 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            border: 2px solid transparent;
+        }
+
+        .bt-block:hover {
+            transform: scaleY(1.1);
+            z-index: 20;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+
+        .bt-block.selected {
+            border-color: white;
+            z-index: 25;
+        }
+
+        .bt-block.mhs { background: linear-gradient(135deg, var(--type-mhs), #c0392b); }
+        .bt-block.mes { background: linear-gradient(135deg, var(--type-mes), #5a9a10); }
+        .bt-block.maintenance { background: linear-gradient(135deg, var(--type-maintenance), #0077a8); }
+        .bt-block.adf { background: linear-gradient(135deg, var(--type-adf), #e67e22); }
+        .bt-block.formation { background: linear-gradient(135deg, var(--type-formation), #8e44ad); }
+        .bt-block.administratif { background: linear-gradient(135deg, var(--type-administratif), #7f8c8d); }
+
+        .bt-block-type {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            opacity: 0.9;
+        }
+
+        .bt-block-title {
+            font-size: 13px;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.3;
+        }
+
+        .bt-block-time {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            opacity: 0.8;
+        }
+
+        /* ==================== DETAIL PANEL ==================== */
+        .detail-panel {
+            width: 0;
+            background: var(--bg-secondary);
+            border-left: 2px solid var(--border-color);
+            overflow: hidden;
+            transition: width 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .detail-panel.open {
+            width: 450px;
+        }
+
+        .detail-header {
+            padding: 24px;
+            background: var(--bg-tertiary);
+            border-bottom: 2px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .detail-title-section {
+            flex: 1;
+        }
+
+        .detail-bt-number {
+            font-family: var(--font-mono);
+            font-size: 14px;
+            color: var(--grdf-blue);
+            margin-bottom: 8px;
+        }
+
+        .detail-title {
+            font-size: 20px;
+            font-weight: 700;
+            line-height: 1.3;
+        }
+
+        .detail-close {
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-card);
+            border: 2px solid var(--border-color);
+            border-radius: 10px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 24px;
+            transition: all 0.2s;
+            flex-shrink: 0;
+            margin-left: 16px;
+        }
+
+        .detail-close:hover {
+            border-color: var(--grdf-red);
+            color: var(--grdf-red);
+        }
+
+        .detail-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        .detail-section {
+            margin-bottom: 28px;
+        }
+
+        .detail-section-title {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 16px;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .detail-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .detail-item.full {
+            grid-column: span 2;
+        }
+
+        .detail-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .detail-value {
+            font-size: 15px;
+            color: var(--text-primary);
+            line-height: 1.4;
+        }
+
+        .detail-type-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .detail-type-badge.mhs { background: rgba(231,76,60,0.2); color: var(--type-mhs); }
+        .detail-type-badge.mes { background: rgba(120,190,32,0.2); color: var(--type-mes); }
+        .detail-type-badge.maintenance { background: rgba(0,163,224,0.2); color: var(--type-maintenance); }
+        .detail-type-badge.adf { background: rgba(245,166,35,0.2); color: var(--type-adf); }
+        .detail-type-badge.formation { background: rgba(155,89,182,0.2); color: var(--type-formation); }
+        .detail-type-badge.administratif { background: rgba(149,165,166,0.2); color: var(--type-administratif); }
+
+        .detail-team-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .detail-team-member {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px;
+            background: var(--bg-card);
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+        }
+
+        .detail-team-avatar {
+            width: 46px;
+            height: 46px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .detail-team-info {
+            flex: 1;
+        }
+
+        .detail-team-name {
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .detail-team-role {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .detail-observations {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 16px;
+            font-size: 14px;
+            line-height: 1.6;
+            color: var(--text-secondary);
+        }
+
+        /* ==================== LEGEND ==================== */
+        .legend {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            padding: 16px 24px;
+            background: var(--bg-secondary);
+            border-top: 2px solid var(--border-color);
+        }
+
+        .legend-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .legend-items {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+
+        .legend-color.mhs { background: var(--type-mhs); }
+        .legend-color.mes { background: var(--type-mes); }
+        .legend-color.maintenance { background: var(--type-maintenance); }
+        .legend-color.adf { background: var(--type-adf); }
+        .legend-color.formation { background: var(--type-formation); }
+        .legend-color.administratif { background: var(--type-administratif); }
+
+        /* ==================== SCROLLBAR ==================== */
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--border-accent);
+        }
+
+        /* ==================== RESPONSIVE 4K ==================== */
+        @media (min-width: 3000px) {
+            .header { height: 140px; padding: 0 60px; }
+            .logo-icon { width: 100px; height: 100px; }
+            .logo-title { font-size: 48px; }
+            .logo-subtitle { font-size: 22px; }
+            .clock { font-size: 80px; }
+            .date-day { font-size: 40px; }
+            .date-full { font-size: 24px; }
+            .stat-value { font-size: 52px; }
+            .stat-label { font-size: 16px; }
+            .teams-sidebar { width: 380px; }
+            .team-item { padding: 20px; }
+            .team-name { font-size: 20px; }
+            .timeline-corner { width: 300px; min-width: 300px; font-size: 22px; }
+            .timeline-hour { font-size: 24px; padding: 24px 0; }
+            .timeline-agent { width: 300px; min-width: 300px; }
+            .agent-name { font-size: 18px; }
+            .timeline-row { min-height: 90px; }
+            .bt-block { padding: 12px 16px; }
+            .bt-block-type { font-size: 14px; }
+            .bt-block-title { font-size: 16px; }
+            .detail-panel.open { width: 600px; }
+            .detail-title { font-size: 28px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <!-- HEADER -->
+        <header class="header">
+            <div class="header-left">
+                <div class="logo">
+                    <div class="logo-icon">
+                        <img src="https://raw.githubusercontent.com/rachidben91-web/Lecteur-plan-terrain/main/assets/logo-grdf-bdsn1.png" alt="GRDF">
+                    </div>
+                    <div class="logo-text">
+                        <span class="logo-title">Briefing Équipe</span>
+                        <span class="logo-subtitle">AI BOUCLE DE SEINE NORD</span>
+                    </div>
+                </div>
+            </div>
+            <div class="header-center">
+                <div class="date-display">
+                    <div class="date-day" id="dateDay">Lundi</div>
+                    <div class="date-full" id="dateFull">19 Janvier 2026</div>
+                </div>
+                <div class="clock" id="clock">07:30</div>
+            </div>
+            <div class="header-right">
+                <div class="stats-row">
+                    <div class="stat-box">
+                        <div class="stat-value blue" id="statBT">32</div>
+                        <div class="stat-label">BT du jour</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value orange" id="statPending">8</div>
+                        <div class="stat-label">En attente</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value green" id="statActive">24</div>
+                        <div class="stat-label">TG actifs</div>
+                    </div>
+                </div>
+                <div class="live-badge">
+                    <div class="live-dot"></div>
+                    <span>Temps réel</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- CONTENT -->
+        <div class="content">
+            <!-- TEAMS SIDEBAR -->
+            <aside class="teams-sidebar">
+                <div class="sidebar-header">
+                    <div class="sidebar-title">Équipes</div>
+                    <div class="team-filters">
+                        <button class="filter-btn active" data-filter="all">Tous</button>
+                        <button class="filter-btn" data-filter="VLG">VLG</button>
+                        <button class="filter-btn" data-filter="SAR">SAR</button>
+                    </div>
+                </div>
+                <div class="teams-list" id="teamsList">
+                    <!-- Populated by JS -->
+                </div>
+            </aside>
+
+            <!-- TIMELINE -->
+            <div class="timeline-area">
+                <div class="timeline-header">
+                    <div class="timeline-corner">
+                        <span>👤</span>
+                        <span>Technicien</span>
+                    </div>
+                    <div class="timeline-hours" id="timelineHours">
+                        <!-- Hours 7h to 18h -->
+                    </div>
+                </div>
+                <div class="timeline-body" id="timelineBody">
+                    <!-- Timeline rows -->
+                </div>
+            </div>
+
+            <!-- DETAIL PANEL -->
+            <div class="detail-panel" id="detailPanel">
+                <div class="detail-header">
+                    <div class="detail-title-section">
+                        <div class="detail-bt-number" id="detailBtNumber"></div>
+                        <h2 class="detail-title" id="detailTitle"></h2>
+                    </div>
+                    <button class="detail-close" onclick="closeDetail()">✕</button>
+                </div>
+                <div class="detail-body" id="detailBody">
+                    <!-- Detail content -->
+                </div>
+            </div>
+        </div>
+
+        <!-- LEGEND -->
+        <div class="legend">
+            <span class="legend-title">Légende :</span>
+            <div class="legend-items">
+                <div class="legend-item"><div class="legend-color mhs"></div><span>MHS</span></div>
+                <div class="legend-item"><div class="legend-color mes"></div><span>MES</span></div>
+                <div class="legend-item"><div class="legend-color maintenance"></div><span>Maintenance</span></div>
+                <div class="legend-item"><div class="legend-color adf"></div><span>ADF/Fuite</span></div>
+                <div class="legend-item"><div class="legend-color formation"></div><span>Formation</span></div>
+                <div class="legend-item"><div class="legend-color administratif"></div><span>Administratif</span></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== DATA ====================
+        const managers = [
+            { name: 'NHIV Narith', nni: 'F23382', role: 'Manager d\'équipe', site: 'VLG', color: '#9B59B6' },
+            { name: 'ZERAMDINI Zied', nni: 'J00654', role: 'Manager d\'équipe', site: 'VLG', color: '#8E44AD' },
+            { name: 'DEBOUSSI Karim', nni: 'J00354', role: 'Manager d\'équipe', site: 'VLG', color: '#7D3C98' },
+            { name: 'ROMAO Laetitia', nni: 'C53976', role: 'Manager d\'équipe', site: 'VLG', color: '#6C3483' },
+            { name: 'ARBIB Mustapha', nni: 'I73173', role: 'Manager d\'équipe', site: 'VLG', color: '#5B2C6F' },
+            { name: 'SALEMKOUR Sabrina', nni: 'E41148', role: 'Manager d\'équipe', site: 'VLG', color: '#4A235A' },
+            { name: 'BEN DAOUD Rachid', nni: 'J60772', role: 'Manager d\'équipe', site: 'VLG', color: '#9B59B6' },
+            { name: 'YAGOUBI Walid', nni: 'G58854', role: 'Manager d\'équipe', site: 'SAR', color: '#E67E22' },
+            { name: 'ICHOUHID-AYADI Milia', nni: 'J57273', role: 'Manager d\'équipe', site: 'SAR', color: '#D35400' }
+        ];
+
+        const technicians = [
+            // Équipe Narith Nhiv
+            { name: 'KHALI Mounir', nni: 'H61582', role: 'RE', site: 'VLG', manager: 'NHIV Narith', color: '#E67E22' },
+            { name: 'CAUSSARIEU Thomas', nni: 'A94073', role: 'TG', site: 'VLG', manager: 'NHIV Narith', color: '#3498DB' },
+            { name: 'DESFONTAINES Richard', nni: 'E51772', role: 'TG', site: 'VLG', manager: 'NHIV Narith', color: '#2ECC71' },
+            { name: 'FOURMONT Cédric', nni: 'I20971', role: 'TG', site: 'VLG', manager: 'NHIV Narith', color: '#1ABC9C' },
+            { name: 'KLEIN Julien', nni: 'J24255', role: 'TG', site: 'VLG', manager: 'NHIV Narith', color: '#00BCD4' },
+            { name: 'LE BOMIN Thomas', nni: 'G47781', role: 'TG', site: 'VLG', manager: 'NHIV Narith', color: '#03A9F4' },
+            
+            // Équipe Zied Zeramdini
+            { name: 'ARIF Kamel', nni: 'F62981', role: 'TG', site: 'VLG', manager: 'ZERAMDINI Zied', color: '#9C27B0' },
+            { name: 'HENRY Alexandre', nni: 'C33576', role: 'TG', site: 'VLG', manager: 'ZERAMDINI Zied', color: '#673AB7' },
+            { name: 'SEGUY Alexis', nni: 'C35074', role: 'TG', site: 'VLG', manager: 'ZERAMDINI Zied', color: '#E67E22' },
+            
+            // Équipe Karim Deboussi
+            { name: 'BENTOUMI Mounir', nni: 'E50275', role: 'TG', site: 'VLG', manager: 'DEBOUSSI Karim', color: '#F5A623' },
+            { name: 'CISSE Amadou', nni: 'B99384', role: 'TG', site: 'VLG', manager: 'DEBOUSSI Karim', color: '#FF5722' },
+            { name: 'SALEP Alexandre', nni: 'G82872', role: 'TG', site: 'VLG', manager: 'DEBOUSSI Karim', color: '#00BCD4' },
+            
+            // Équipe Laetitia Romao
+            { name: 'ABIR Bilal', nni: 'H26975', role: 'TG', site: 'VLG', manager: 'ROMAO Laetitia', color: '#3498DB' },
+            { name: 'CISSE Moussa', nni: 'I13252', role: 'TG', site: 'VLG', manager: 'ROMAO Laetitia', color: '#E74C3C' },
+            { name: 'CORREIA Christopher', nni: 'A37272', role: 'TG', site: 'VLG', manager: 'ROMAO Laetitia', color: '#2980B9' },
+            
+            // Équipe Mustapha Arbib
+            { name: 'ASSOUMO Alain-Bruno', nni: 'D45777', role: 'TG', site: 'VLG', manager: 'ARBIB Mustapha', color: '#9B59B6' },
+            { name: 'HAJJI Toufik', nni: 'C53276', role: 'TG', site: 'VLG', manager: 'ARBIB Mustapha', color: '#8E44AD' },
+            { name: 'SISSOKO Seran', nni: 'F86682', role: 'TG', site: 'VLG', manager: 'ARBIB Mustapha', color: '#795548' },
+            { name: 'TELDJI Djamel', nni: 'H11281', role: 'TG', site: 'VLG', manager: 'ARBIB Mustapha', color: '#4CAF50' },
+            
+            // Équipe Sabrina Salemkour
+            { name: 'DIALLO Amadou', nni: 'A73777', role: 'TG', site: 'VLG', manager: 'SALEMKOUR Sabrina', color: '#FF9800' },
+            { name: 'VERTIL Wilco', nni: 'A77455', role: 'TG', site: 'VLG', manager: 'SALEMKOUR Sabrina', color: '#607D8B' },
+            
+            // Équipe Rachid Ben Daoud
+            { name: 'ROBICHON Jordan', nni: 'A14356', role: 'TG', site: 'VLG', manager: 'BEN DAOUD Rachid', color: '#00BFA5' },
+            { name: 'STEHELYN Hakim', nni: 'E10173', role: 'TG', site: 'VLG', manager: 'BEN DAOUD Rachid', color: '#FF5722' },
+            
+            // Équipe Walid Yagoubi (SAR)
+            { name: 'ARKAN Mesut', nni: 'C61984', role: 'TG', site: 'SAR', manager: 'YAGOUBI Walid', color: '#FF5722' },
+            { name: 'CLINQUART Cédric', nni: 'H47480', role: 'TG', site: 'SAR', manager: 'YAGOUBI Walid', color: '#BF360C' },
+            
+            // Équipe Milia (SAR)
+            { name: 'PICCININ Alexandre', nni: 'B51877', role: 'TG', site: 'SAR', manager: 'ICHOUHID-AYADI Milia', color: '#651FFF' },
+            
+            // Appui
+            { name: 'KHALLADI Aleksandra', nni: 'F54357', role: 'Appui', site: 'VLG', manager: 'ARBIB Mustapha', color: '#E91E63' }
+        ];
+
+        const btData = [
+            {
+                id: 'BT22626000801',
+                type: 'mhs',
+                typeLabel: 'MHS',
+                title: 'MHS n° U0169TT3 AVEC DEPOSE COMPTEUR',
+                client: 'M. TOMAS CHRISTOPHE',
+                phone: '0676873110',
+                address: '20 RUE HOCHE 92700 COLOMBES',
+                pdl: 'GI040987',
+                timeStart: '13:00',
+                timeEnd: '14:00',
+                agent: 'ABIR Bilal',
+                team: [
+                    { name: 'ABIR Bilal', nni: 'H26975', role: 'Responsable d\'équipe', color: '#3498DB' },
+                    { name: 'CAUSSARIEU Thomas', nni: 'A94073', role: 'Agent', color: '#78BE20' }
+                ],
+                observations: 'MHS n° U0169TT3 AVEC DEPOSE COMPTEUR/ GI040987 / G25 / FOR113 + PHOTOS / PO 13H30'
+            },
+            {
+                id: 'BT22626000781',
+                type: 'mes',
+                typeLabel: 'MES',
+                title: 'CHGT CPTR // n°DE09HTS2',
+                client: 'Mme MAAFI-YOUNG',
+                phone: '06 17 30 30 87',
+                address: '263 RUE DES GROS GRES 92700 COLOMBES',
+                pdl: '21548335663519',
+                timeStart: '14:00',
+                timeEnd: '15:00',
+                agent: 'ABIR Bilal',
+                team: [
+                    { name: 'ABIR Bilal', nni: 'H26975', role: 'Chef de travaux', color: '#3498DB' },
+                    { name: 'CAUSSARIEU Thomas', nni: 'A94073', role: 'Agent', color: '#78BE20' }
+                ],
+                observations: 'CHANGEMENT DE COMPTEUR + POSE MODULE // G25'
+            },
+            {
+                id: 'BT22626000818',
+                type: 'maintenance',
+                typeLabel: 'MAINT CI-CM',
+                title: 'Maintenance cicm - IS JOUR 1',
+                address: '92390 VILLENEUVE LA GARENNE',
+                timeStart: '07:30',
+                timeEnd: '16:30',
+                agent: 'ASSOUMO Alain-Bruno',
+                team: [
+                    { name: 'ASSOUMO Alain-Bruno', nni: 'D45777', role: 'OIS', color: '#9B59B6' }
+                ],
+                observations: 'Réaliser la maintenance préventive selon le prescrit. Traiter tous les champs de l\'inventaire GMAO.'
+            },
+            {
+                id: 'BT22625034621',
+                type: 'adf',
+                typeLabel: 'SURVEILLANCE',
+                title: 'Surveillance RP22624011481',
+                address: '59 AV CHARLES DE GAULLE MONTMORENCY',
+                timeStart: '07:30',
+                timeEnd: '09:30',
+                agent: 'BENTOUMI Mounir',
+                team: [
+                    { name: 'BENTOUMI Mounir', nni: 'E50275', role: 'Chef de travaux', color: '#F5A623' },
+                    { name: 'CISSE Moussa', nni: 'I13252', role: 'Agent', color: '#E74C3C' }
+                ],
+                observations: 'Surveillance ADF - Contacter le BEX pour rendre compte.'
+            },
+            {
+                id: 'BT22626001136',
+                type: 'adf',
+                typeLabel: 'LOCALISATION',
+                title: 'Localisation ADF22626000281',
+                address: '1 RUE AMPERE 92700 COLOMBES',
+                timeStart: '13:00',
+                timeEnd: '14:30',
+                agent: 'BENTOUMI Mounir',
+                team: [
+                    { name: 'BENTOUMI Mounir', nni: 'E50275', role: 'Chef de travaux', color: '#F5A623' },
+                    { name: 'CISSE Moussa', nni: 'I13252', role: 'Agent', color: '#E74C3C' }
+                ],
+                observations: 'Localisation de fuite. Réaliser les sondages sur chaussée et/ou trottoir.'
+            },
+            {
+                id: 'BT22626000822',
+                type: 'maintenance',
+                typeLabel: 'MAINT CI-CM',
+                title: 'Maintenance cicm - DEP 3',
+                address: '92390 VILLENEUVE LA GARENNE',
+                timeStart: '07:30',
+                timeEnd: '12:00',
+                agent: 'CORREIA Christopher',
+                team: [
+                    { name: 'CORREIA Christopher', nni: 'A37272', role: 'OIS', color: '#2980B9' }
+                ],
+                observations: 'Maintenance préventive CI-CM. Traiter les OT VSIC associés.'
+            },
+            {
+                id: 'BT22625034924',
+                type: 'formation',
+                typeLabel: 'FORMATION',
+                title: 'Maintien competence soudage cuivre',
+                address: '137 BD CHARLES DE GAULLE VLG - AIRE PÉDAGO',
+                timeStart: '13:00',
+                timeEnd: '14:30',
+                agent: 'CORREIA Christopher',
+                team: [
+                    { name: 'CORREIA Christopher', nni: 'A37272', role: 'Agent', color: '#2980B9' }
+                ],
+                observations: 'Maintien de competence soudage cuivre sur l\'aire pédagogique'
+            },
+            {
+                id: 'BT22625034925',
+                type: 'formation',
+                typeLabel: 'FORMATION',
+                title: 'Maintien competence soudage PE',
+                address: '137 BD CHARLES DE GAULLE VLG - AIRE PÉDAGO',
+                timeStart: '14:30',
+                timeEnd: '16:30',
+                agent: 'CORREIA Christopher',
+                team: [
+                    { name: 'CORREIA Christopher', nni: 'A37272', role: 'Agent', color: '#2980B9' }
+                ],
+                observations: 'MAINTIEN DE COMPETENCE SOUDAGE PE - CREATION DE BRCH'
+            },
+            {
+                id: 'BT22626001204',
+                type: 'maintenance',
+                typeLabel: 'RENOUV. BRCHT',
+                title: 'RENOUVELLEMENT BRANCHEMENT FONTE DN170',
+                address: '31 RUE HOCHE 92270 BOIS COLOMBES',
+                timeStart: '08:00',
+                timeEnd: '12:00',
+                agent: 'KLEIN Julien',
+                team: [
+                    { name: 'KLEIN Julien', nni: 'J24255', role: 'Chef de travaux', color: '#00BCD4' },
+                    { name: 'SEGUY Alexis', nni: 'C35074', role: 'Agent', color: '#E67E22' }
+                ],
+                observations: '35%LIE sur prise, 30%LIE sur trou de ballon. Branchement à renouveler.'
+            },
+            {
+                id: 'BT22626001141',
+                type: 'maintenance',
+                typeLabel: 'CORRECT.',
+                title: 'CHGT COMPTEUR GRIPPÉ',
+                address: '14 RUE DANIEL ASNIERES - 3ème étage',
+                timeStart: '13:00',
+                timeEnd: '16:30',
+                agent: 'KLEIN Julien',
+                team: [
+                    { name: 'KLEIN Julien', nni: 'J24255', role: 'Chef de travaux', color: '#00BCD4' },
+                    { name: 'SEGUY Alexis', nni: 'C35074', role: 'Agent', color: '#E67E22' }
+                ],
+                observations: 'Compteur écrous grippés - dé-grippage et changement compteur.'
+            },
+            {
+                id: 'BT22625034713',
+                type: 'administratif',
+                typeLabel: 'RÉUNION',
+                title: 'Réunion équipe managériale',
+                address: '92390 VILLENEUVE LA GARENNE',
+                timeStart: '08:00',
+                timeEnd: '12:00',
+                agent: 'KHALI Mounir',
+                team: [
+                    { name: 'KHALI Mounir', nni: 'H61582', role: 'RE', color: '#E67E22' }
+                ],
+                observations: 'Réunion d\'équipe managériale'
+            },
+            {
+                id: 'BT22626000369',
+                type: 'mhs',
+                typeLabel: 'PI VAINES',
+                title: 'PI VAINES 92/93/95',
+                address: '137 BD CHARLES DE GAULLE VLG',
+                timeStart: '07:30',
+                timeEnd: '16:30',
+                agent: 'KHALLADI Aleksandra',
+                team: [
+                    { name: 'KHALLADI Aleksandra', nni: 'F54357', role: 'OIS', color: '#E91E63' }
+                ],
+                observations: 'Passage interventions vaines départements 92/93/95'
+            },
+            {
+                id: 'BT22626000861',
+                type: 'maintenance',
+                typeLabel: 'MAINT CI-CM',
+                title: 'Maintenance cicm - IS J 2 avec SAR',
+                address: '92390 VILLENEUVE LA GARENNE',
+                timeStart: '07:30',
+                timeEnd: '16:30',
+                agent: 'SALEP Alexandre',
+                team: [
+                    { name: 'SALEP Alexandre', nni: 'G82872', role: 'Chef de travaux', color: '#00BCD4' },
+                    { name: 'ARKAN Mesut', nni: 'C61984', role: 'Agent', color: '#FF5722' }
+                ],
+                observations: 'Maintenance préventive CI-CM avec doublon Sartrouville'
+            },
+            {
+                id: 'BT22626001035',
+                type: 'adf',
+                typeLabel: 'RSF',
+                title: 'Recherche Systématique Fuite',
+                address: '92390 VILLENEUVE LA GARENNE',
+                timeStart: '07:30',
+                timeEnd: '12:00',
+                agent: 'SISSOKO Seran',
+                team: [
+                    { name: 'SISSOKO Seran', nni: 'F86682', role: 'OIS', color: '#795548' }
+                ],
+                observations: 'Recherche systématique de fuite à pied sur réseau GN'
+            },
+            {
+                id: 'BT22626001036',
+                type: 'adf',
+                typeLabel: 'RSF',
+                title: 'Recherche Systématique Fuite PM',
+                address: '92390 VILLENEUVE LA GARENNE',
+                timeStart: '13:00',
+                timeEnd: '16:30',
+                agent: 'VERTIL Wilco',
+                team: [
+                    { name: 'VERTIL Wilco', nni: 'A77455', role: 'OIS', color: '#607D8B' }
+                ],
+                observations: 'Recherche systématique de fuite à pied sur réseau GN - après-midi'
+            }
+        ];
+
+        // ==================== UTILITIES ====================
+        function getInitials(name) {
+            return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+        }
+
+        function timeToPercent(time) {
+            const [h, m] = time.split(':').map(Number);
+            const totalMinutes = (h - 7) * 60 + m; // Starting at 7h
+            return (totalMinutes / (12 * 60)) * 100; // 12 hours total (7h-19h)
+        }
+
+        function updateClock() {
+            const now = new Date();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            document.getElementById('clock').textContent = `${hours}:${minutes}`;
+            
+            // Update current hour indicator
+            const currentHour = now.getHours();
+            document.querySelectorAll('.timeline-hour').forEach((el, idx) => {
+                el.classList.toggle('current', idx + 7 === currentHour);
+            });
+        }
+
+        // ==================== RENDER FUNCTIONS ====================
+        function renderTimelineHeader() {
+            const container = document.getElementById('timelineHours');
+            let html = '';
+            for (let h = 7; h <= 18; h++) {
+                html += `<div class="timeline-hour">${String(h).padStart(2, '0')}h</div>`;
+            }
+            container.innerHTML = html;
+        }
+
+        function renderTeamsList(filter = 'all') {
+            const container = document.getElementById('teamsList');
+            let html = '';
+            
+            // Group by managers
+            const filteredManagers = filter === 'all' ? managers : managers.filter(m => m.site === filter);
+            
+            filteredManagers.forEach(manager => {
+                const teamMembers = technicians.filter(t => t.manager === manager.name && (filter === 'all' || t.site === filter));
+                
+                html += `
+                    <div class="team-group">
+                        <div class="team-item manager" onclick="filterByManager('${manager.name}')">
+                            <div class="team-avatar" style="background: ${manager.color};">${getInitials(manager.name)}</div>
+                            <div class="team-info">
+                                <div class="team-name">${manager.name}</div>
+                                <div class="team-role">${manager.role} • ${manager.site}</div>
+                            </div>
+                            <div class="team-count">${teamMembers.length} TG</div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        function renderTimeline(filter = 'all', managerFilter = null) {
+            const container = document.getElementById('timelineBody');
+            let html = '';
+            
+            // Get agents who have BTs
+            const agentsWithBTs = [...new Set(btData.map(bt => bt.agent))];
+            
+            // Filter technicians
+            let filteredTechs = technicians.filter(t => agentsWithBTs.includes(t.name));
+            if (filter !== 'all') {
+                filteredTechs = filteredTechs.filter(t => t.site === filter);
+            }
+            if (managerFilter) {
+                filteredTechs = filteredTechs.filter(t => t.manager === managerFilter);
+            }
+            
+            // Sort by manager
+            filteredTechs.sort((a, b) => a.manager.localeCompare(b.manager));
+            
+            filteredTechs.forEach(tech => {
+                const techBTs = btData.filter(bt => bt.agent === tech.name);
+                
+                // Generate BT blocks
+                let blocks = '';
+                techBTs.forEach(bt => {
+                    const left = timeToPercent(bt.timeStart);
+                    const right = timeToPercent(bt.timeEnd);
+                    const width = right - left;
+                    
+                    blocks += `
+                        <div class="bt-block ${bt.type}" 
+                             style="left: ${left}%; width: ${width}%;"
+                             onclick="showBTDetail('${bt.id}')"
+                             data-bt-id="${bt.id}">
+                            <div class="bt-block-type">${bt.typeLabel}</div>
+                            <div class="bt-block-title">${bt.title}</div>
+                            <div class="bt-block-time">${bt.timeStart} - ${bt.timeEnd}</div>
+                        </div>
+                    `;
+                });
+                
+                html += `
+                    <div class="timeline-row" data-agent="${tech.name}">
+                        <div class="timeline-agent" onclick="showAgentDetail('${tech.name}')">
+                            <div class="agent-avatar" style="background: ${tech.color};">${getInitials(tech.name)}</div>
+                            <div class="agent-info">
+                                <div class="agent-name">${tech.name}</div>
+                                <div class="agent-meta">${tech.role} • ${tech.nni}</div>
+                            </div>
+                        </div>
+                        <div class="timeline-slots">
+                            ${Array(12).fill('<div class="timeline-slot"></div>').join('')}
+                            ${blocks}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        // ==================== DETAIL FUNCTIONS ====================
+        function showBTDetail(btId) {
+            const bt = btData.find(b => b.id === btId);
+            if (!bt) return;
+            
+            // Highlight selected block
+            document.querySelectorAll('.bt-block').forEach(el => el.classList.remove('selected'));
+            document.querySelector(`[data-bt-id="${btId}"]`)?.classList.add('selected');
+            
+            document.getElementById('detailBtNumber').textContent = bt.id;
+            document.getElementById('detailTitle').textContent = bt.title;
+            
+            document.getElementById('detailBody').innerHTML = `
+                <div class="detail-section">
+                    <div class="detail-section-title">Type d'intervention</div>
+                    <div class="detail-type-badge ${bt.type}">${bt.typeLabel}</div>
+                </div>
+                
+                <div class="detail-section">
+                    <div class="detail-section-title">Informations</div>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <span class="detail-label">Horaire</span>
+                            <span class="detail-value">${bt.timeStart} - ${bt.timeEnd}</span>
+                        </div>
+                        ${bt.client ? `
+                        <div class="detail-item">
+                            <span class="detail-label">Client</span>
+                            <span class="detail-value">${bt.client}</span>
+                        </div>
+                        ` : ''}
+                        ${bt.phone ? `
+                        <div class="detail-item">
+                            <span class="detail-label">Téléphone</span>
+                            <span class="detail-value">${bt.phone}</span>
+                        </div>
+                        ` : ''}
+                        ${bt.pdl ? `
+                        <div class="detail-item">
+                            <span class="detail-label">PDL</span>
+                            <span class="detail-value">${bt.pdl}</span>
+                        </div>
+                        ` : ''}
+                        <div class="detail-item full">
+                            <span class="detail-label">Adresse</span>
+                            <span class="detail-value">${bt.address}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="detail-section">
+                    <div class="detail-section-title">Équipe (${bt.team.length})</div>
+                    <div class="detail-team-list">
+                        ${bt.team.map(member => `
+                            <div class="detail-team-member">
+                                <div class="detail-team-avatar" style="background: ${member.color};">${getInitials(member.name)}</div>
+                                <div class="detail-team-info">
+                                    <div class="detail-team-name">${member.name}</div>
+                                    <div class="detail-team-role">${member.role} • ${member.nni}</div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                
+                <div class="detail-section">
+                    <div class="detail-section-title">Observations</div>
+                    <div class="detail-observations">${bt.observations}</div>
+                </div>
+            `;
+            
+            document.getElementById('detailPanel').classList.add('open');
+        }
+
+        function showAgentDetail(agentName) {
+            const tech = technicians.find(t => t.name === agentName);
+            const agentBTs = btData.filter(bt => bt.agent === agentName);
+            
+            if (!tech) return;
+            
+            // Highlight row
+            document.querySelectorAll('.timeline-row').forEach(el => el.classList.remove('selected'));
+            document.querySelector(`[data-agent="${agentName}"]`)?.classList.add('selected');
+            
+            document.getElementById('detailBtNumber').textContent = tech.nni;
+            document.getElementById('detailTitle').textContent = tech.name;
+            
+            document.getElementById('detailBody').innerHTML = `
+                <div class="detail-section">
+                    <div class="detail-section-title">Informations agent</div>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <span class="detail-label">Rôle</span>
+                            <span class="detail-value">${tech.role}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Site</span>
+                            <span class="detail-value">${tech.site}</span>
+                        </div>
+                        <div class="detail-item full">
+                            <span class="detail-label">Manager</span>
+                            <span class="detail-value">${tech.manager}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="detail-section">
+                    <div class="detail-section-title">BT du jour (${agentBTs.length})</div>
+                    <div class="detail-team-list">
+                        ${agentBTs.map(bt => `
+                            <div class="detail-team-member" onclick="showBTDetail('${bt.id}')" style="cursor: pointer;">
+                                <div class="detail-team-avatar ${bt.type}" style="background: var(--type-${bt.type}); font-size: 10px;">${bt.typeLabel.slice(0,3)}</div>
+                                <div class="detail-team-info">
+                                    <div class="detail-team-name">${bt.title}</div>
+                                    <div class="detail-team-role">${bt.timeStart} - ${bt.timeEnd} • ${bt.address.split(' ').slice(-2).join(' ')}</div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('detailPanel').classList.add('open');
+        }
+
+        function closeDetail() {
+            document.getElementById('detailPanel').classList.remove('open');
+            document.querySelectorAll('.bt-block, .timeline-row').forEach(el => el.classList.remove('selected'));
+        }
+
+        function filterByManager(managerName) {
+            // Toggle filter
+            const currentFilter = document.querySelector('.team-item.active');
+            if (currentFilter) {
+                currentFilter.classList.remove('active');
+            }
+            
+            const clicked = document.querySelector(`.team-item[onclick*="${managerName}"]`);
+            if (clicked && !clicked.classList.contains('active')) {
+                clicked.classList.add('active');
+                renderTimeline(currentSiteFilter, managerName);
+            } else {
+                renderTimeline(currentSiteFilter, null);
+            }
+        }
+
+        // ==================== EVENT LISTENERS ====================
+        let currentSiteFilter = 'all';
+
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentSiteFilter = btn.dataset.filter;
+                renderTeamsList(currentSiteFilter);
+                renderTimeline(currentSiteFilter);
+                closeDetail();
+            });
+        });
+
+        // ==================== INIT ====================
+        renderTimelineHeader();
+        renderTeamsList();
+        renderTimeline();
+        updateClock();
+        setInterval(updateClock, 1000);
+
+        // Update stats
+        document.getElementById('statBT').textContent = btData.length;
+        document.getElementById('statActive').textContent = [...new Set(btData.map(bt => bt.agent))].length;
+    </script>
+</body>
+</html>
