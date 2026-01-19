@@ -890,7 +890,7 @@
             border: 1px solid var(--border-color);
             border-radius: 16px;
             width: 100%;
-            max-width: 700px;
+            max-width: 800px;
             max-height: 90vh;
             overflow: hidden;
             display: flex;
@@ -915,6 +915,7 @@
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
+            background: var(--bg-tertiary);
         }
 
         .modal-title-section {
@@ -940,7 +941,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            background: var(--bg-tertiary);
+            background: var(--bg-card);
             border: 1px solid var(--border-color);
             border-radius: 6px;
             color: var(--text-secondary);
@@ -953,10 +954,55 @@
             color: var(--text-primary);
         }
 
+        /* Modal Tabs */
+        .modal-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+            padding: 0 var(--space-lg);
+        }
+
+        .tab-btn {
+            padding: var(--space-md) var(--space-lg);
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--text-secondary);
+            font-family: var(--font-sans);
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tab-btn:hover {
+            color: var(--text-primary);
+        }
+
+        .tab-btn.active {
+            color: var(--grdf-blue);
+            border-bottom-color: var(--grdf-blue);
+        }
+
         .modal-body {
             padding: var(--space-lg);
             overflow-y: auto;
             flex: 1;
+            background: var(--bg-secondary);
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
 
         .modal-section {
@@ -1043,12 +1089,110 @@
             color: var(--text-secondary);
         }
 
+        /* Security Tab Styles */
+        .security-status {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            padding: var(--space-md);
+            background: rgba(120, 190, 32, 0.1);
+            border: 1px solid var(--grdf-green);
+            border-radius: 8px;
+            color: var(--grdf-green);
+            font-weight: 600;
+            margin-bottom: var(--space-lg);
+        }
+
+        .risk-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-sm);
+            margin-bottom: var(--space-lg);
+        }
+
+        .risk-tag {
+            padding: 6px 12px;
+            background: rgba(231, 76, 60, 0.1);
+            border: 1px solid rgba(231, 76, 60, 0.3);
+            border-radius: 20px;
+            color: #E74C3C;
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .prevention-box {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: var(--space-md);
+            color: var(--text-secondary);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        /* Documents Tab Styles */
+        .docs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: var(--space-md);
+        }
+
+        .doc-card {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: var(--space-md);
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-md);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .doc-card:hover {
+            border-color: var(--grdf-blue);
+            transform: translateY(-2px);
+        }
+
+        .doc-icon {
+            width: 40px;
+            height: 40px;
+            background: var(--bg-card);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+        }
+
+        .doc-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .doc-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .doc-type {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
         .modal-footer {
             padding: var(--space-lg);
             border-top: 1px solid var(--border-color);
             display: flex;
             justify-content: space-between;
             gap: var(--space-md);
+            background: var(--bg-tertiary);
         }
 
         .modal-footer-left {
@@ -1091,6 +1235,10 @@
             .bt-grid {
                 grid-template-columns: 1fr;
             }
+
+            .modal-tabs {
+                overflow-x: auto;
+            }
         }
 
         /* ==================== SCROLLBAR ==================== */
@@ -1123,7 +1271,6 @@
     </style>
 </head>
 <body>
-    <!-- HEADER -->
     <header class="header">
         <div class="header-left">
             <div class="logo">
@@ -1154,11 +1301,8 @@
         </div>
     </header>
 
-    <!-- MAIN CONTAINER -->
     <div class="main-container">
-        <!-- SIDEBAR -->
         <aside class="sidebar">
-            <!-- Stats Section -->
             <div class="sidebar-section">
                 <div class="sidebar-title">Tableau de bord</div>
                 <div class="stats-grid">
@@ -1185,7 +1329,6 @@
                 </div>
             </div>
 
-            <!-- Filters -->
             <div class="sidebar-section">
                 <div class="sidebar-title">Filtres</div>
                 <div class="filter-group">
@@ -1211,7 +1354,6 @@
                 </div>
             </div>
 
-            <!-- Team List -->
             <div class="sidebar-section">
                 <div class="sidebar-title">Équipe (101 agents)</div>
                 <div class="filter-group" style="margin-bottom: var(--space-sm);">
@@ -1231,14 +1373,11 @@
                     </select>
                 </div>
                 <div class="tech-list" id="techList">
-                    <!-- Populated by JS -->
-                </div>
+                    </div>
             </div>
         </aside>
 
-        <!-- MAIN CONTENT -->
         <main class="main-content">
-            <!-- Page Header -->
             <div class="page-header">
                 <div class="page-title-section">
                     <h1 class="page-title">Bons de Travail</h1>
@@ -1256,7 +1395,6 @@
                 </div>
             </div>
 
-            <!-- Search & View Toggle -->
             <div style="display: flex; gap: var(--space-md); align-items: center;">
                 <div class="search-bar" style="flex: 1;">
                     <svg class="icon search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -1268,12 +1406,9 @@
                 </div>
             </div>
 
-            <!-- BT Grid View -->
             <div class="bt-grid" id="btGrid">
-                <!-- Populated by JS -->
-            </div>
+                </div>
 
-            <!-- Timeline View -->
             <div class="timeline-container" id="timelineView">
                 <div class="timeline-header">
                     <div class="timeline-header-cell">Technicien</div>
@@ -1291,13 +1426,11 @@
                     <div class="timeline-header-cell">18h</div>
                 </div>
                 <div id="timelineRows">
-                    <!-- Populated by JS -->
-                </div>
+                    </div>
             </div>
         </main>
     </div>
 
-    <!-- MODAL -->
     <div class="modal-overlay" id="modalOverlay">
         <div class="modal">
             <div class="modal-header">
@@ -1309,24 +1442,56 @@
                     <svg class="icon" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
             </div>
+            
+            <div class="modal-tabs">
+                <button class="tab-btn active" onclick="switchTab('synthese')">Synthèse</button>
+                <button class="tab-btn" onclick="switchTab('securite')">🛡️ Analyse Risques</button>
+                <button class="tab-btn" onclick="switchTab('docs')">📁 Documents & Plans</button>
+            </div>
+
             <div class="modal-body">
-                <div class="modal-section">
-                    <div class="modal-section-title">Informations générales</div>
-                    <div class="modal-info-grid" id="modalInfo">
-                        <!-- Populated by JS -->
+                <div id="tab-synthese" class="tab-content active">
+                    <div class="modal-section">
+                        <div class="modal-section-title">Informations générales</div>
+                        <div class="modal-info-grid" id="modalInfo">
+                            </div>
+                    </div>
+                    <div class="modal-section">
+                        <div class="modal-section-title">Équipe assignée</div>
+                        <div class="modal-team-list" id="modalTeam">
+                            </div>
+                    </div>
+                    <div class="modal-section">
+                        <div class="modal-section-title">Observations</div>
+                        <p id="modalObservations" style="font-size: 13px; color: var(--text-secondary); line-height: 1.6;"></p>
                     </div>
                 </div>
-                <div class="modal-section">
-                    <div class="modal-section-title">Équipe assignée</div>
-                    <div class="modal-team-list" id="modalTeam">
-                        <!-- Populated by JS -->
+
+                <div id="tab-securite" class="tab-content">
+                    <div class="security-status">
+                        <svg class="icon" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        <span>Analyse de risque réalisée et validée</span>
+                    </div>
+                    
+                    <div class="modal-section">
+                        <div class="modal-section-title">Risques identifiés</div>
+                        <div class="risk-tags" id="riskTags">
+                            </div>
+                    </div>
+
+                    <div class="modal-section">
+                        <div class="modal-section-title">Mesures de prévention</div>
+                        <div class="prevention-box" id="preventionMeasures">
+                            </div>
                     </div>
                 </div>
-                <div class="modal-section">
-                    <div class="modal-section-title">Observations</div>
-                    <p id="modalObservations" style="font-size: 13px; color: var(--text-secondary); line-height: 1.6;"></p>
+
+                <div id="tab-docs" class="tab-content">
+                    <div class="docs-grid" id="docsGrid">
+                        </div>
                 </div>
             </div>
+
             <div class="modal-footer">
                 <div class="modal-footer-left">
                     <button class="btn btn-secondary">
@@ -1335,7 +1500,7 @@
                     </button>
                     <button class="btn btn-secondary">
                         <svg class="icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        Télécharger
+                        Télécharger Pack
                     </button>
                 </div>
                 <div class="modal-footer-right">
@@ -1369,8 +1534,17 @@
                     { name: 'CAUSSARIEU Thomas', nni: 'A94073', role: 'Agent', color: '#78BE20' }
                 ],
                 observations: 'MHS n° U0169TT3 AVEC DEPOSE COMPTEUR/ GI040987 / G25 / FOR113 + PHOTOS / PO 13H30',
-                documents: ['FOR113', 'PHOTOS'],
-                eotp: 'V11AD-AQ21'
+                eotp: 'V11AD-AQ21',
+                // NOUVEAU: Données de sécurité & Documents
+                security: {
+                    risks: ['Travail en hauteur', 'Outillage électroportatif', 'Circulation'],
+                    prevention: 'Port du harnais obligatoire pour accès échelle. Balisage strict de la zone d\'intervention (cônes + rubalise). Vérification des outils avant usage.'
+                },
+                documents: [
+                    { type: 'pdf', name: 'FOR113_MHS.pdf', category: 'Fiche Intervention' },
+                    { type: 'img', name: 'Compteur_Avant.jpg', category: 'Photo' },
+                    { type: 'pdf', name: 'Plan_Cadastre.pdf', category: 'Plan' }
+                ]
             },
             {
                 id: 'BT22626000781',
@@ -1390,8 +1564,15 @@
                     { name: 'CAUSSARIEU Thomas', nni: 'A94073', role: 'Agent', color: '#78BE20' }
                 ],
                 observations: 'CHANGEMENT DE COMPTEUR + POSE MODULE // G25 // MME MAAFI YOUNG 06 17 30 30 87',
-                documents: ['FOR113', 'MAT COMPLET', 'PHOTO'],
-                eotp: 'V11AD-AR07'
+                eotp: 'V11AD-AR07',
+                security: {
+                    risks: ['Fuite de gaz', 'Espace confiné'],
+                    prevention: 'Contrôle d\'atmosphère avant intervention. Vérification étanchéité systématique après pose.'
+                },
+                documents: [
+                    { type: 'pdf', name: 'Fiche_MES_V3.pdf', category: 'Procédure' },
+                    { type: 'img', name: 'Emplacement_Module.jpg', category: 'Photo' }
+                ]
             },
             {
                 id: 'BT22626000818',
@@ -1410,8 +1591,14 @@
                     { name: 'ASSOUMO Alain Bruno', nni: 'D45777', role: 'Opérateur intervenant seul', color: '#9B59B6' }
                 ],
                 observations: 'Réaliser la maintenance préventive (INS, REV, SCI, INS OCG) selon le prescrit. Traiter tous les champs de l\'inventaire dans la GMAO.',
-                documents: [],
-                eotp: 'V11AD-RF03'
+                eotp: 'V11AD-RF03',
+                security: {
+                    risks: ['Chien méchant', 'Accès difficile'],
+                    prevention: 'Vigilance accès parties communes. Clés disponibles chez le gardien.'
+                },
+                documents: [
+                    { type: 'pdf', name: 'Liste_Points_Controle.pdf', category: 'GMAO' }
+                ]
             },
             {
                 id: 'BT22625034621',
@@ -1431,110 +1618,15 @@
                     { name: 'CISSE Moussa', nni: 'I13252', role: 'Agent', color: '#E74C3C' }
                 ],
                 observations: '11/09/2024 suite surveillance plus aucun indice détecte sur la ligature. Contacter le BEX pour rendre compte.',
-                documents: ['PLANS'],
-                eotp: 'V11AD-R124'
-            },
-            {
-                id: 'BT22625017454',
-                type: 'adf',
-                typeLabel: 'ADF',
-                title: 'Surveillance RP22625009441',
-                client: '',
-                phone: '',
-                address: '33 AVENUE GALLIENI 93800 EPINAY SUR SEINE',
-                pdl: '',
-                duration: '02h00',
-                timeStart: '09:30',
-                timeEnd: '11:30',
-                status: 'inprogress',
-                team: [
-                    { name: 'BENTOUMI Mounir', nni: 'E50275', role: 'Chef de travaux', color: '#F5A623' },
-                    { name: 'CISSE Moussa', nni: 'I13252', role: 'Agent', color: '#E74C3C' }
-                ],
-                observations: 'Surveillance de l\'ADF. Récupérer le dossier ADF. Tracer les réseaux gaz et élec au sol.',
-                documents: [],
-                eotp: 'V11AD-RD33'
-            },
-            {
-                id: 'BT22626001136',
-                type: 'adf',
-                typeLabel: 'LOCALISATION',
-                title: 'Localisation ADF22626000281',
-                client: '',
-                phone: '',
-                address: '1 RUE AMPERE 92700 COLOMBES PAV',
-                pdl: '',
-                duration: '01h30',
-                timeStart: '13:00',
-                timeEnd: '14:30',
-                status: 'pending',
-                team: [
-                    { name: 'BENTOUMI Mounir', nni: 'E50275', role: 'Chef de travaux', color: '#F5A623' },
-                    { name: 'CISSE Moussa', nni: 'I13252', role: 'Agent', color: '#E74C3C' }
-                ],
-                observations: 'Localisation de fuite. Réaliser les sondages sur chaussée et/ou trottoir.',
-                documents: [],
-                eotp: 'V11AD-RD15'
-            },
-            {
-                id: 'BT22626000822',
-                type: 'maintenance',
-                typeLabel: 'MAINT CI-CM',
-                title: 'Maintenance cicm - DEP 3',
-                client: '',
-                phone: '',
-                address: '92390 VILLENEUVE LA GARENNE',
-                pdl: '',
-                duration: '04h30',
-                timeStart: '07:30',
-                timeEnd: '12:00',
-                status: 'inprogress',
-                team: [
-                    { name: 'CORREIA Christopher', nni: 'A37272', role: 'Opérateur intervenant seul', color: '#3498DB' }
-                ],
-                observations: 'Maintenance préventive CI-CM. Traiter les OT VSIC associés.',
-                documents: [],
-                eotp: 'V11AD-RF03'
-            },
-            {
-                id: 'BT22625034924',
-                type: 'formation',
-                typeLabel: 'FORMATION',
-                title: 'Maintien de competence soudage cuivre',
-                client: '',
-                phone: '',
-                address: '137 BOULEVARD CHARLES DE GAULLE 92390 VILLENEUVE LA GARENNE - AIRE PEDAGOGIQUE',
-                pdl: '',
-                duration: '01h30',
-                timeStart: '13:00',
-                timeEnd: '14:30',
-                status: 'pending',
-                team: [
-                    { name: 'CORREIA Christopher', nni: 'A37272', role: 'Agent', color: '#3498DB' }
-                ],
-                observations: 'Maintien de competence soudage cuivre sur l\'aire pédagogique de VLG',
-                documents: [],
-                eotp: 'V11AD-RD24'
-            },
-            {
-                id: 'BT22625034925',
-                type: 'formation',
-                typeLabel: 'FORMATION',
-                title: 'MAINTIEN DE COMPETENCE SOUDAGE PE',
-                client: '',
-                phone: '',
-                address: '137 BOULEVARD CHARLES DE GAULLE 92390 VILLENEUVE LA GARENNE - AIRE PEDAGOGIQUE',
-                pdl: '',
-                duration: '02h00',
-                timeStart: '14:30',
-                timeEnd: '16:30',
-                status: 'pending',
-                team: [
-                    { name: 'CORREIA Christopher', nni: 'A37272', role: 'Agent', color: '#3498DB' }
-                ],
-                observations: 'MAINTIEN DE COMPETENCE SOUDAGE PE - CREATION DE BRCH ET RACCORDEMENT EN LIGNE',
-                documents: [],
-                eotp: 'V11AD-RD24'
+                eotp: 'V11AD-R124',
+                security: {
+                    risks: ['Circulation dense', 'Travaux sur chaussée'],
+                    prevention: 'Pose de panneaux AK5 + K2. Gilet haute visibilité classe 3 obligatoire.'
+                },
+                documents: [
+                    { type: 'pdf', name: 'Carto_Reseau_200.pdf', category: 'Cartographie' },
+                    { type: 'pdf', name: 'Historique_Fuites.pdf', category: 'Dossier' }
+                ]
             },
             {
                 id: 'BT22626001204',
@@ -1554,131 +1646,16 @@
                     { name: 'SEGUY Alexis', nni: 'C35074', role: 'Agent', color: '#E67E22' }
                 ],
                 observations: 'CR APRES OUVERTURE: 35%LIE SUR LA PRISE ET 30%LIE SUR TROU DE BALLON. Branchement à renouveler.',
-                documents: ['AT', 'PLANS'],
-                eotp: 'V11AD-R124'
-            },
-            {
-                id: 'BT22626001141',
-                type: 'maintenance',
-                typeLabel: 'CORRECT.',
-                title: 'CHANGEMENT DE COMPTEUR GRIPPÉ /POUR TRAITEMENT RP 0661',
-                client: '',
-                phone: '',
-                address: '14 RUE DANIEL 92600 ASNIERES SUR SEINE - 3ème étage Folio 470',
-                pdl: '',
-                duration: '03h30',
-                timeStart: '13:00',
-                timeEnd: '16:30',
-                status: 'pending',
-                team: [
-                    { name: 'KLEIN Julien', nni: 'J24255', role: 'Chef de travaux', color: '#1ABC9C' },
-                    { name: 'SEGUY Alexis', nni: 'C35074', role: 'Agent', color: '#E67E22' }
-                ],
-                observations: 'Suite demande changement du compteur écrous grippé voir pour dé-grippage et changement compteur.',
-                documents: ['AT', 'PHOTOS'],
-                eotp: 'V11AD-RD15'
-            },
-            {
-                id: 'BT22625034713',
-                type: 'administratif',
-                typeLabel: 'REUNION',
-                title: 'Réunion équipe Narith / Zied',
-                client: '',
-                phone: '',
-                address: '92390 VILLENEUVE LA GARENNE',
-                pdl: '',
-                duration: '04h00',
-                timeStart: '08:00',
-                timeEnd: '12:00',
-                status: 'inprogress',
-                team: [
-                    { name: 'NHIV Narith', nni: 'F23382', role: 'Responsable d\'équipe', color: '#9B59B6' },
-                    { name: 'KHALI Mounir', nni: 'H61582', role: 'Manager', color: '#00A3E0' }
-                ],
-                observations: 'Réunion d\'équipe managériale',
-                documents: [],
-                eotp: 'V11AD-RM14'
-            },
-            {
-                id: 'BT22626000369',
-                type: 'mhs',
-                typeLabel: 'PI VAINES',
-                title: 'PI VAINES 92/93//95',
-                client: '',
-                phone: '',
-                address: '137 BOULEVARD CHARLES DE GAULLE 92390 VILLENEUVE LA GARENNE',
-                pdl: '',
-                duration: '09h00',
-                timeStart: '07:30',
-                timeEnd: '16:30',
-                status: 'inprogress',
-                team: [
-                    { name: 'KHALLADI Aleksandra', nni: 'F54357', role: 'Opérateur intervenant seul', color: '#E91E63' }
-                ],
-                observations: 'Passage interventions vaines départements 92/93/95',
-                documents: [],
-                eotp: 'V11AD-AQ27'
-            },
-            {
-                id: 'BT22626000861',
-                type: 'maintenance',
-                typeLabel: 'MAINT CI-CM',
-                title: 'Maintenance cicm - IS J 2 Doublons avec MR ARKAN SARTROUVILLE',
-                client: '',
-                phone: '',
-                address: '92390 VILLENEUVE LA GARENNE',
-                pdl: '',
-                duration: '09h00',
-                timeStart: '07:30',
-                timeEnd: '16:30',
-                status: 'inprogress',
-                team: [
-                    { name: 'SALEP Alexandre', nni: 'G82872', role: 'Chef de travaux', color: '#00BCD4' },
-                    { name: 'ARKAN Mesut', nni: 'C61984', role: 'Agent', color: '#FF5722' }
-                ],
-                observations: 'Maintenance préventive CI-CM avec doublon Sartrouville',
-                documents: [],
-                eotp: 'V11AD-RF03'
-            },
-            {
-                id: 'BT22626001035',
-                type: 'adf',
-                typeLabel: 'SAP',
-                title: 'SAP / Surveillance à pied',
-                client: '',
-                phone: '',
-                address: '92390 VILLENEUVE LA GARENNE',
-                pdl: '',
-                duration: '03h30',
-                timeStart: '13:00',
-                timeEnd: '16:30',
-                status: 'pending',
-                team: [
-                    { name: 'SISSOKO Seran', nni: 'F86682', role: 'Opérateur intervenant seul', color: '#795548' }
-                ],
-                observations: 'Recherche systématique de fuite à pied sur réseau GN',
-                documents: [],
-                eotp: 'V11AD-RF09'
-            },
-            {
-                id: 'BT22626001036',
-                type: 'adf',
-                typeLabel: 'SAP',
-                title: 'SAP / Surveillance à pied',
-                client: '',
-                phone: '',
-                address: '92390 VILLENEUVE LA GARENNE',
-                pdl: '',
-                duration: '09h00',
-                timeStart: '07:30',
-                timeEnd: '16:30',
-                status: 'inprogress',
-                team: [
-                    { name: 'VERTIL Wilco', nni: 'A77455', role: 'Opérateur intervenant seul', color: '#607D8B' }
-                ],
-                observations: 'Recherche systématique de fuite à pied sur réseau GN',
-                documents: [],
-                eotp: 'V11AD-RF09'
+                eotp: 'V11AD-R124',
+                security: {
+                    risks: ['Terrassement', 'Réseaux concessionnaires', 'Manutention manuelle'],
+                    prevention: 'DICT validée (réf: 202601120015). Sondage préalable obligatoire. Port des EPI complets + Casque.'
+                },
+                documents: [
+                    { type: 'pdf', name: 'DICT_Reponse.pdf', category: 'Administratif' },
+                    { type: 'pdf', name: 'Plan_Reseau_AEP_ELEC.pdf', category: 'Plan' },
+                    { type: 'img', name: 'Sondage_Trottoir.jpg', category: 'Photo' }
+                ]
             }
         ];
 
@@ -1946,9 +1923,14 @@
             const bt = btData.find(b => b.id === btId);
             if (!bt) return;
 
+            // Header
             document.getElementById('modalBtNumber').textContent = bt.id;
             document.getElementById('modalTitle').textContent = bt.title;
 
+            // Reset Tabs
+            switchTab('synthese');
+
+            // --- TAB 1: SYNTHESE ---
             document.getElementById('modalInfo').innerHTML = `
                 <div class="modal-info-item">
                     <span class="modal-info-label">Type</span>
@@ -2004,11 +1986,59 @@
 
             document.getElementById('modalObservations').textContent = bt.observations;
 
+            // --- TAB 2: SECURITE ---
+            if (bt.security) {
+                document.getElementById('riskTags').innerHTML = bt.security.risks.map(risk => `
+                    <div class="risk-tag">
+                        ⚠️ ${risk}
+                    </div>
+                `).join('');
+                document.getElementById('preventionMeasures').textContent = bt.security.prevention;
+            } else {
+                document.getElementById('riskTags').innerHTML = '<span style="color:var(--text-muted); font-size:13px;">Aucun risque majeur signalé</span>';
+                document.getElementById('preventionMeasures').textContent = 'Appliquer les procédures standard.';
+            }
+
+            // --- TAB 3: DOCUMENTS ---
+            if (bt.documents && bt.documents.length > 0) {
+                document.getElementById('docsGrid').innerHTML = bt.documents.map(doc => `
+                    <div class="doc-card">
+                        <div class="doc-icon">
+                            ${doc.type === 'pdf' ? 
+                            '<svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>' 
+                            : '<svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'}
+                        </div>
+                        <div class="doc-info">
+                            <span class="doc-name">${doc.name}</span>
+                            <span class="doc-type">${doc.category}</span>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                document.getElementById('docsGrid').innerHTML = '<div style="color:var(--text-muted); font-size:13px;">Aucun document joint.</div>';
+            }
+
             document.getElementById('modalOverlay').classList.add('active');
         }
 
         function closeModal() {
             document.getElementById('modalOverlay').classList.remove('active');
+        }
+
+        function switchTab(tabId) {
+            // Update Buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if(btn.getAttribute('onclick').includes(tabId)) {
+                    btn.classList.add('active');
+                }
+            });
+
+            // Update Content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById('tab-' + tabId).classList.add('active');
         }
 
         // View Toggle
