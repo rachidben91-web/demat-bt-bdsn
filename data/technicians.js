@@ -1,84 +1,87 @@
 // data/technicians.js
-// Généré depuis 'Liste TG ME VLG.xlsx' — uniquement Villeneuve-la-Garenne
-// Clé d'association principale: NNI Simplifié (champ 'nni')
+// DEMAT-BT — Référentiel techniciens (VLG uniquement)
+// Source: liste fournie par Rachid (Villeneuve-la-Garenne)
 
-window.TECHNICIANS = [
-  {"id":"nni_h26975","name":"ABIR Bilal","nni":"H26975","site":"Villeneuve-la-Garenne","manager":"Rachid Ben Daoud","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_i73173","name":"ARBIB Mustapha","nni":"I73173","site":"Villeneuve-la-Garenne","manager":"Heidine Guenfoud","poste":"Manager d'Equipe","color":"#111"},
-  {"id":"nni_f62981","name":"ARIF Kamel","nni":"F62981","site":"Villeneuve-la-Garenne","manager":"Mustapha Arbib","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_d45777","name":"ASSOUMO Alain-Bruno","nni":"D45777","site":"Villeneuve-la-Garenne","manager":"Sabrina Salemkour","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_b09571","name":"BEEHARRY-PANRAY Sanjeet","nni":"B09571","site":"Villeneuve-la-Garenne","manager":"Rachid Ben Daoud","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_j60772","name":"BEN DAOUD Rachid","nni":"J60772","site":"Villeneuve-la-Garenne","manager":"Franck Théry","poste":"Manager d'Equipe","color":"#111"},
-  {"id":"nni_a02277","name":"BENALLOU Radouane","nni":"A02277","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_e50275","name":"BENTOUMI Mounir","nni":"E50275","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_g48754","name":"BETTENCOURT DIAS Gil","nni":"G48754","site":"Villeneuve-la-Garenne","manager":"Rachid Ben Daoud","poste":"Référent d'Equipe","color":"#111"},
-  {"id":"nni_h01053","name":"BOUCHAIBI Mounir","nni":"H01053","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_f76487","name":"BOUDJEMA Hakim","nni":"F76487","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_g85425","name":"BOUDJEMAA Karim","nni":"G85425","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_d34441","name":"BOUHASANE Yassine","nni":"D34441","site":"Villeneuve-la-Garenne","manager":"Rachid Ben Daoud","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_f36076","name":"BOUKHARI Mouloud","nni":"F36076","site":"Villeneuve-la-Garenne","manager":"Sabrina Salemkour","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h15766","name":"BOULIF Driss","nni":"H15766","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_f89459","name":"BOURASSI Abderrahim","nni":"F89459","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_d86163","name":"BOURDON David","nni":"D86163","site":"Villeneuve-la-Garenne","manager":"Sabrina Salemkour","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_c76315","name":"BOURHOUCHE Djamila","nni":"C76315","site":"Villeneuve-la-Garenne","manager":"Rachid Ben Daoud","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h03872","name":"BOUSSAADA Nassim","nni":"H03872","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_f26749","name":"BOUZID Sofiane","nni":"F26749","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h81076","name":"CHERIF Mourad","nni":"H81076","site":"Villeneuve-la-Garenne","manager":"Sabrina Salemkour","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_a94073","name":"CAUSSARIEU Thomas","nni":"A94073","site":"Villeneuve-la-Garenne","manager":"Rachid Ben Daoud","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_b86729","name":"DEBOUSSI Karim","nni":"B86729","site":"Villeneuve-la-Garenne","manager":"Franck Théry","poste":"Manager d'Equipe","color":"#111"},
-  {"id":"nni_h93249","name":"DEBZA Ahmed","nni":"H93249","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_b08435","name":"DIALLO Amadou","nni":"B08435","site":"Villeneuve-la-Garenne","manager":"Sabrina Salemkour","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_c08823","name":"EL MAALEM Ayoub","nni":"C08823","site":"Villeneuve-la-Garenne","manager":"Rachid Ben Daoud","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_g11835","name":"EL MOUSTAKIM Mohamed","nni":"G11835","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_f71172","name":"EL OUAFY Abdelkader","nni":"F71172","site":"Villeneuve-la-Garenne","manager":"Sabrina Salemkour","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_b09437","name":"ELAMRANI Najib","nni":"B09437","site":"Villeneuve-la-Garenne","manager":"Sabrina Salemkour","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_g70667","name":"ELBAZ Mohamed","nni":"G70667","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_d51310","name":"ELFARIH Hicham","nni":"D51310","site":"Villeneuve-la-Garenne","manager":"Rachid Ben Daoud","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_b67669","name":"ELMZOURI Youssef","nni":"B67669","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_g60224","name":"GHARBI Asma","nni":"G60224","site":"Villeneuve-la-Garenne","manager":"Sabrina Salemkour","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h46039","name":"GUEZNAY Heidine","nni":"H46039","site":"Villeneuve-la-Garenne","manager":"Franck Théry","poste":"Manager d'Equipe","color":"#111"},
-  {"id":"nni_d25285","name":"HADJ MIMOUNE Moussa","nni":"D25285","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_f16333","name":"HAMMADI Saïd","nni":"F16333","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_g05361","name":"HAMOUCHE Sofiane","nni":"G05361","site":"Villeneuve-la-Garenne","manager":"Sabrina Salemkour","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_d00776","name":"HASSANI Walid","nni":"D00776","site":"Villeneuve-la-Garenne","manager":"Sabrina Salemkour","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_c92565","name":"HIDALGO Aurélien","nni":"C92565","site":"Villeneuve-la-Garenne","manager":"Rachid Ben Daoud","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h92505","name":"IKHLEF Ayoub","nni":"H92505","site":"Villeneuve-la-Garenne","manager":"Sabrina Salemkour","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_f47058","name":"KAMMOUNI Hedi","nni":"F47058","site":"Villeneuve-la-Garenne","manager":"Sabrina Salemkour","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h09379","name":"KHELLAF Hichem","nni":"H09379","site":"Villeneuve-la-Garenne","manager":"Rachid Ben Daoud","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h09846","name":"KHERBACHE Tahar","nni":"H09846","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h16701","name":"KHERCHOUF Kamel","nni":"H16701","site":"Villeneuve-la-Garenne","manager":"Sabrina Salemkour","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h03298","name":"KHERFI Karim","nni":"H03298","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h76450","name":"KHEZRI Mohamed","nni":"H76450","site":"Villeneuve-la-Garenne","manager":"Rachid Ben Daoud","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h20121","name":"KHIATI Mohamed","nni":"H20121","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_f13811","name":"KIMOUCHE Sofiane","nni":"F13811","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_f00367","name":"KOUADRIA Yazid","nni":"F00367","site":"Villeneuve-la-Garenne","manager":"Sabrina Salemkour","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h59041","name":"LAHLOU Samir","nni":"H59041","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h68690","name":"LARBI Yassine","nni":"H68690","site":"Villeneuve-la-Garenne","manager":"Rachid Ben Daoud","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h25228","name":"MAHMOUDI Ismaïl","nni":"H25228","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h85163","name":"MAIMOUNI Mohamed","nni":"H85163","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h13746","name":"MAKHLOUFI Sofiane","nni":"H13746","site":"Villeneuve-la-Garenne","manager":"Sabrina Salemkour","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_b31379","name":"MANSOURI Rachid","nni":"B31379","site":"Villeneuve-la-Garenne","manager":"Rachid Ben Daoud","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_c13058","name":"MAROUF Khaled","nni":"C13058","site":"Villeneuve-la-Garenne","manager":"Sabrina Salemkour","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h33611","name":"MEBARKI Farid","nni":"H33611","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_b17445","name":"MEBTOUCHI Mourad","nni":"B17445","site":"Villeneuve-la-Garenne","manager":"Sabrina Salemkour","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_g54125","name":"MECHRI Amine","nni":"G54125","site":"Villeneuve-la-Garenne","manager":"Rachid Ben Daoud","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h07866","name":"MELLAH Aymen","nni":"H07866","site":"Villeneuve-la-Garenne","manager":"Rachid Ben Daoud","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_f15603","name":"MOUNET Myriam","nni":"F15603","site":"Villeneuve-la-Garenne","manager":"Sabrina Salemkour","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_f13194","name":"MOUSSAOUI Sami","nni":"F13194","site":"Villeneuve-la-Garenne","manager":"Sabrina Salemkour","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_g12722","name":"NASSER Abdelkrim","nni":"G12722","site":"Villeneuve-la-Garenne","manager":"Sabrina Salemkour","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_b76085","name":"NTSOUMBA Rudy","nni":"B76085","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h14620","name":"OUHADDA Hichem","nni":"H14620","site":"Villeneuve-la-Garenne","manager":"Rachid Ben Daoud","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_c13793","name":"OUKIL Aissa","nni":"C13793","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h71325","name":"RAOUADJ Farid","nni":"H71325","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_f27692","name":"REMER Alain","nni":"F27692","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_f49362","name":"ROBINET Jordan","nni":"F49362","site":"Villeneuve-la-Garenne","manager":"Rachid Ben Daoud","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_c00448","name":"ROUCHDY Yassine","nni":"C00448","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h00072","name":"RUDDY Guillaume","nni":"H00072","site":"Villeneuve-la-Garenne","manager":"Franck Théry","poste":"Référent Technique","color":"#111"},
-  {"id":"nni_f27964","name":"SAIDANI Karim","nni":"F27964","site":"Villeneuve-la-Garenne","manager":"Rachid Ben Daoud","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_h28080","name":"SALEMkour Sabrina","nni":"H28080","site":"Villeneuve-la-Garenne","manager":"Franck Théry","poste":"Manager d'Equipe","color":"#111"},
-  {"id":"nni_d94826","name":"SOUFIANE Abdelhak","nni":"D94826","site":"Villeneuve-la-Garenne","manager":"Sabrina Salemkour","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_c80448","name":"THERY Franck","nni":"C80448","site":"Villeneuve-la-Garenne","manager":"Tilila Adkime","poste":"Chef d'agence","color":"#111"},
-  {"id":"nni_g03325","name":"TOUIZER Abdelghani","nni":"G03325","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_f00362","name":"YOUSFI Ahmed","nni":"F00362","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"},
-  {"id":"nni_c07163","name":"ZIANI Samir","nni":"C07163","site":"Villeneuve-la-Garenne","manager":"Karim Deboussi","poste":"Technicien Gaz","color":"#111"}
-];
+(function () {
+  const SITE = "Villeneuve-la-Garenne";
+
+  // Palette simple (pour chips/pastilles si besoin)
+  const PALETTE = [
+    "#0ea5e9", "#22c55e", "#f59e0b", "#a855f7", "#ef4444",
+    "#14b8a6", "#f97316", "#84cc16", "#6366f1", "#ec4899",
+    "#06b6d4", "#10b981", "#eab308", "#8b5cf6", "#fb7185"
+  ];
+
+  const raw = [
+    ["ABIR", "Bilal", "H26975", "Rachid Ben Daoud"],
+    ["ARIF", "Kamel", "F62981", "Mustapha Arbib"],
+    ["ASSOUMO", "Alain-Bruno", "D45777", "Sabrina Salemkour"],
+    ["BEEHARRY-PANRAY", "Sanjeet", "B09571", "Rachid Ben Daoud"],
+    ["BENALLOU", "Radouane", "A02277", "Karim Deboussi"],
+    ["BENTOUMI", "Mounir", "E50275", "Karim Deboussi"],
+    ["BRIET", "Dylan", "C38084", "Rachid Ben Daoud"],
+    ["CAUSSARIEU", "Thomas", "A94073", "Narith Nhiv"],
+    ["CISSE", "Amadou", "B99384", "Karim Deboussi"],
+    ["CISSE", "Moussa", "I13252", "Laetitia Romao"],
+    ["CORREIA", "Christopher", "A37272", "Laetitia Romao"],
+    ["DADSI", "Amine", "E23680", "Mustapha Arbib"],
+    ["DEBY", "Medhi", "J19576", "Laetitia Romao"],
+    ["DESFONTAINES", "Richard", "E51772", "Narith Nhiv"],
+    ["DIALLO", "Amadou", "A73777", "Sabrina Salemkour"],
+    ["DUBOIS", "Guillaume", "E34879", "Laetitia Romao"],
+    ["DUCOLLET", "Jérémy", "J04081", "Zied Zeramdini"],
+    ["ESSOBAT NFONZOCK", "Judith", "I20180", "Mustapha Arbib"],
+    ["FELHI", "Mohamed", "I16183", "Karim Deboussi"],
+    ["FOURMONT", "Cédric", "I20971", "Rachid Ben Daoud"],
+    ["GALLEDOU", "Sikhou", "A67070", "Zied Zeramdini"],
+    ["GNEBIO", "Noël", "G59180", "Sabrina Salemkour"],
+    ["GUFFROY", "Maxime", "G81772", "Sabrina Salemkour"],
+    ["HAJJI", "Toufik", "C53276", "Mustapha Arbib"],
+    ["HARBOULI", "Rachid", "H49056", "Narith Nhiv"],
+    ["HENRY", "Alexandre", "C33576", "Zied Zeramdini"],
+    ["HUET", "Frédéric", "E82472", "Zied Zeramdini"],
+    ["JOUANNE", "Alexandre", "C20671", "Narith Nhiv"],
+    ["KLEIN", "Julien", "J24255", "Laetitia Romao"],
+    ["LE BOMIN", "Thomas", "G47781", "Narith Nhiv"],
+    ["MAGASSOUBA", "Mohamed", "C30671", "Karim Deboussi"],
+    ["MAMMOU", "Mounir", "G90777", "Mustapha Arbib"],
+    ["NAVAUX", "Aurélien", "A39083", "Karim Deboussi"],
+    ["ROBICHON", "Jordan", "A14356", "Rachid Ben Daoud"],
+    ["SALEP", "Alexandre", "G82872", "Karim Deboussi"],
+    ["SEGUY", "Alexis", "C35074", "Zied Zeramdini"],
+    ["SHEIKH", "Arslan", "F80482", "Laetitia Romao"],
+    ["SISSOKO", "Seran", "F86682", "Mustapha Arbib"],
+    ["SISSOKO", "Tiémoko", "E06180", "Zied Zeramdini"],
+    ["STEHELYN", "Hakim", "E10173", "Rachid Ben Daoud"],
+    ["TAKROUNI", "Jamila", "H64778", "Karim Deboussi"],
+    ["TCHERNIAWSKY", "Christophe", "C18572", "Laetitia Romao"],
+    ["TELDJI", "Djamel", "H11281", "Mustapha Arbib"],
+    ["TEMUR", "Berkay Can", "X01563", "Mustapha Arbib"],
+    ["THE", "Romain", "E23670", "Zied Zeramdini"],
+    ["TOUIL", "Mourad", "D80482", "Sabrina Salemkour"],
+    ["VAN-UXEN", "Robert", "J14432", "Narith Nhiv"],
+    ["VERTIL", "Wilco", "A77455", "Sabrina Salemkour"],
+    ["WELLE", "David", "A31480", "Sabrina Salemkour"]
+  ];
+
+  const TECHNICIANS = raw.map((r, i) => {
+    const last = String(r[0]).trim().toUpperCase();
+    const first = String(r[1]).trim();
+    const nni = String(r[2]).trim().toUpperCase();
+    const manager = String(r[3]).trim();
+
+    return {
+      id: nni,                 // ID = NNI simplifié (stable)
+      nni,                     // NNI simplifié
+      name: `${last} ${first}`,// Affichage
+      lastName: last,
+      firstName: first,
+      site: SITE,
+      manager,
+      role: "Technicien Gaz",
+      color: PALETTE[i % PALETTE.length]
+    };
+  });
+
+  window.TECHNICIANS = TECHNICIANS;
+})();
