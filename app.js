@@ -92,7 +92,7 @@ async function loadPdfJs() {
 // -----------------------------
 async function loadZones() {
   if (ZONES) return ZONES;
-  const res = await fetch("zones.json", { cache: "no-store" });
+  const res = await fetch("./zones.json", { cache: "no-store" });
   if (!res.ok) throw new Error("zones.json introuvable (404). Vérifie le nom et l'emplacement.");
   ZONES = await res.json();
   return ZONES;
