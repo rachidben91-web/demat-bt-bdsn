@@ -123,7 +123,10 @@ function updateTopbarClock() {
   const main = $("tbDateTime");
   if (!main) return;
   const now = new Date();
-  main.textContent = `${formatDateFR(now)} — ${formatTimeFR(now)}`;
+  main.innerHTML = `
+  <span class="topbarClock__date">${formatDateFR(now)}</span>
+  <span class="topbarClock__time"><span class="ico">🕒</span>${formatTimeFR(now)}</span>
+`;
   // meta stays whatever status message is
 }
 
