@@ -16,12 +16,21 @@ const state = {
   totalPages: 0,
   bts: [],
   view: "referent", // referent | brief
+  selectedBtId: "",
   filters: {
     q: "",
     types: new Set(),
     techId: ""
   },
-  countsByTechId: new Map()
+  countsByTechId: new Map(),
+  viewer: {
+    isOpen: false,
+    page: 1,
+    title: "",
+    subtitle: "",
+    btId: "", // si ouvert depuis un BT, utile pour export
+    range: null // {start,end} facultatif (pour info)
+  }
 };
 
 // -------------------------
@@ -192,6 +201,7 @@ async function extractAll() {
 
   state.bts = [];
   state.countsByTechId = new Map();
+  state.selectedBtId = "";
 
   let currentBT = null;
 
@@ -250,6 +260,10 @@ async function extractAll() {
   }
 
   setProgress(100, `Terminé : ${state.bts.length} BT détectés.`);
+  if (state.pdfName) {
+    const pagesLiees = state.bts.reduce((a, b) => a + (b.docs?.length || 0), 0);
+    setPdfStatus(`${state.pdfName} — ${state.bts.length} BT — ${pagesLiees} pages liées`);
+  }
   console.log("[DEMAT-BT] Extraction OK ✅", state.bts.length, "BT");
   renderAll();
 }
@@ -354,6 +368,141 @@ function matchesFilters(bt) {
 }
 
 // -------------------------
+// Helpers: docs groupés + ranges BT
+// -------------------------
+function groupDocs(docs) {
+  const out = {};
+  for (const d of docs || []) {
+    if (!d || !d.type || !d.page) continue;
+    if (!out[d.type]) out[d.type] = [];
+    out[d.type].push(d.page);
+  }
+  for (const k of Object.keys(out)) {
+    out[k] = [...new Set(out[k])].sort((a, b) => a - b);
+  }
+  return out;
+}
+
+function getBtById(btId) {
+  const id = (btId || "").toUpperCase();
+  return state.bts.find(b => (b.id || "").toUpperCase() === id) || null;
+}
+
+function getBtRange(btId) {
+  const bt = getBtById(btId);
+  if (!bt) return null;
+  const idx = state.bts.findIndex(b => b.id === bt.id);
+  const start = bt.pageStart || 1;
+  let end = state.totalPages || start;
+  if (idx >= 0 && idx < state.bts.length - 1) {
+    const next = state.bts[idx + 1];
+    if (next?.pageStart) end = Math.max(start, next.pageStart - 1);
+  }
+  return { start, end };
+}
+
+// -------------------------
+// Viewer (modal) — PDF render + export BT
+// -------------------------
+function openViewer({ page = 1, title = "Aperçu", subtitle = "", btId = "", range = null } = {}) {
+  const modal = $("modal");
+  if (!modal) return;
+
+  state.viewer.isOpen = true;
+  state.viewer.page = Math.max(1, Math.min(state.totalPages || 1, page));
+  state.viewer.title = title;
+  state.viewer.subtitle = subtitle;
+  state.viewer.btId = btId || "";
+  state.viewer.range = range;
+
+  const t = $("modalTitle");
+  const st = $("modalSubtitle");
+  if (t) t.textContent = title;
+  if (st) st.textContent = subtitle;
+
+  modal.setAttribute("aria-hidden", "false");
+  renderViewerPage(state.viewer.page);
+  syncViewerButtons();
+}
+
+function closeViewer() {
+  const modal = $("modal");
+  if (!modal) return;
+  state.viewer.isOpen = false;
+  modal.setAttribute("aria-hidden", "true");
+}
+
+async function renderViewerPage(pageNum) {
+  if (!state.pdf) return;
+  const canvas = $("canvas");
+  const info = $("modalInfo");
+  if (!canvas) return;
+
+  const page = await state.pdf.getPage(pageNum);
+  const viewport = page.getViewport({ scale: 1.25 });
+
+  const dpr = window.devicePixelRatio || 1;
+  const ctx = canvas.getContext("2d", { alpha: false });
+  canvas.width = Math.floor(viewport.width * dpr);
+  canvas.height = Math.floor(viewport.height * dpr);
+  canvas.style.width = `${Math.floor(viewport.width)}px`;
+  canvas.style.height = `${Math.floor(viewport.height)}px`;
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, viewport.width, viewport.height);
+
+  await page.render({ canvasContext: ctx, viewport }).promise;
+
+  const rangeTxt = state.viewer.range ? ` — BT p.${state.viewer.range.start}→${state.viewer.range.end}` : "";
+  if (info) info.textContent = `Page ${pageNum}/${state.totalPages}${rangeTxt}`;
+}
+
+function syncViewerButtons() {
+  const prev = $("btnPrevPage");
+  const next = $("btnNextPage");
+  const exp = $("btnExportBt");
+
+  if (prev) prev.disabled = state.viewer.page <= 1;
+  if (next) next.disabled = state.viewer.page >= (state.totalPages || 1);
+  if (exp) exp.disabled = !state.viewer.btId;
+}
+
+async function exportCurrentBt() {
+  if (!state.pdfFile) return;
+  const btId = state.viewer.btId;
+  const range = getBtRange(btId);
+  if (!range) return;
+
+  try {
+    const srcBytes = await state.pdfFile.arrayBuffer();
+    const srcPdf = await PDFLib.PDFDocument.load(srcBytes);
+    const outPdf = await PDFLib.PDFDocument.create();
+
+    const pages = [];
+    for (let p = range.start; p <= range.end; p++) pages.push(p - 1); // pdf-lib = 0-index
+
+    const copied = await outPdf.copyPages(srcPdf, pages);
+    copied.forEach(pg => outPdf.addPage(pg));
+
+    const outBytes = await outPdf.save();
+    const blob = new Blob([outBytes], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${btId || "BT"}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  } catch (e) {
+    console.error(e);
+    alert("Export impossible (voir console).\nAstuce: vérifie que pdf-lib est bien chargé.");
+  }
+}
+
+// -------------------------
 // Render KPI
 // -------------------------
 function renderKpis(filtered) {
@@ -364,8 +513,8 @@ function renderKpis(filtered) {
   const docsCount = filtered.reduce((acc, bt) => acc + (bt.docs?.length || 0), 0);
 
   kpis.innerHTML = `
-    <div class="kpi"><div class="kpi__v">${totalBT}</div><div class="kpi__l">BT</div></div>
-    <div class="kpi"><div class="kpi__v">${docsCount}</div><div class="kpi__l">Pages liées</div></div>
+    <div class="kpi"><b>${totalBT}</b> BT</div>
+    <div class="kpi"><b>${docsCount}</b> pages liées</div>
   `;
 }
 
@@ -383,31 +532,54 @@ function renderReferent(filtered) {
   }
 
   for (const bt of filtered) {
-    const teamTxt = (bt.team || []).map(m => {
-      const tech = mapTechByNni(m.nni);
-      return tech ? tech.name : m.nni;
-    }).join(" • ") || "—";
+    const teamTxt = (bt.team || [])
+      .map(m => {
+        const tech = mapTechByNni(m.nni);
+        return tech ? tech.name : m.nni;
+      })
+      .join(" • ") || "—";
 
-    const counts = {};
-    for (const d of bt.docs || []) counts[d.type] = (counts[d.type] || 0) + 1;
-    const docChips = Object.keys(counts)
-      .map(t => `<span class="mini_chip">${t}:${counts[t]}</span>`)
-      .join(" ");
+    const docsByType = groupDocs(bt.docs || []);
+    const badges = Object.keys(docsByType)
+      .sort((a, b) => (a === "BT" ? -1 : b === "BT" ? 1 : a.localeCompare(b)))
+      .map(t => {
+        const pages = docsByType[t];
+        const cls = t === "BT" ? "badge badge--strong" : "badge";
+        return `<button class="${cls}" data-action="open-doc" data-bt="${bt.id}" data-type="${t}" data-page="${pages[0]}">
+          ${t}${pages.length > 1 ? `:${pages.length}` : ""}
+        </button>`;
+      })
+      .join("");
 
     const card = document.createElement("div");
-    card.className = "bt_card";
+    const isSelected = state.selectedBtId === bt.id;
+    card.className = `btCard${isSelected ? " btCard--selected" : ""}`;
+    card.setAttribute("data-bt", bt.id);
+
     card.innerHTML = `
-      <div class="bt_title">${bt.id || "BT ?"}</div>
-      <div class="bt_sub">${bt.objet || ""}</div>
-      <div class="bt_meta">
-        <div>📅 ${bt.datePrevue || "—"}</div>
-        <div>👤 ${bt.client || "—"}</div>
-        <div>📍 ${bt.localisation || "—"}</div>
-        <div>👥 ${teamTxt}</div>
-        <div>${bt.atNum ? `🧾 ${bt.atNum}` : ""}</div>
+      <div class="btTop">
+        <div>
+          <div class="btId">${bt.id || "BT ?"}</div>
+          <div class="btMeta">${bt.objet || ""}</div>
+        </div>
+        <div class="btActions">
+          <button class="btn btn--secondary" data-action="open-bt" data-bt="${bt.id}">📄 Ouvrir</button>
+        </div>
       </div>
-      <div class="bt_docchips">${docChips}</div>
+
+      <div class="btMeta">
+        <div>📅 ${bt.datePrevue || "—"}</div>
+        <div>📍 ${bt.localisation || "—"}</div>
+        <div>👤 ${bt.client || "—"}</div>
+        <div>👥 ${teamTxt}</div>
+        ${bt.atNum ? `<div>🧾 ${bt.atNum}</div>` : ""}
+      </div>
+
+      <div class="badges" aria-label="Documents">
+        ${badges}
+      </div>
     `;
+
     grid.appendChild(card);
   }
 }
@@ -440,28 +612,41 @@ function renderBrief(filtered) {
   }
 
   for (const bt of filtered) {
-    const counts = {};
-    for (const d of bt.docs || []) counts[d.type] = (counts[d.type] || 0) + 1;
-
-    const docsLine = Object.keys(counts)
-      .map(k => `${k}:${counts[k]}`)
-      .join(" • ");
+    const docsByType = groupDocs(bt.docs || []);
+    const docBtns = Object.keys(docsByType)
+      .sort((a, b) => (a === "BT" ? -1 : b === "BT" ? 1 : a.localeCompare(b)))
+      .map(t => {
+        const pages = docsByType[t];
+        return `<button class="docBtn" data-action="open-doc" data-bt="${bt.id}" data-type="${t}" data-page="${pages[0]}">
+          ${t}${pages.length > 1 ? ` (${pages.length})` : ""}
+        </button>`;
+      })
+      .join("");
 
     const item = document.createElement("div");
-    item.className = "briefItem";
+    const isSelected = state.selectedBtId === bt.id;
+    item.className = `briefCard${isSelected ? " btCard--selected" : ""}`;
+    item.setAttribute("data-bt", bt.id);
+
     item.innerHTML = `
-      <div class="briefItem__top">
-        <div class="briefItem__id">${bt.id}</div>
-        <div class="briefItem__date">${bt.datePrevue || ""}</div>
+      <div class="btTop">
+        <div>
+          <h3 class="briefTitle" style="margin:0">${bt.id}</h3>
+          <div class="briefSub">📅 ${bt.datePrevue || "—"} • 📍 ${bt.localisation || "—"}</div>
+        </div>
+        <div class="btActions">
+          <button class="btn btn--secondary" data-action="open-bt" data-bt="${bt.id}">📄 Ouvrir</button>
+        </div>
       </div>
-      <div class="briefItem__obj">${bt.objet || ""}</div>
-      <div class="briefItem__meta">
-        <span>📍 ${bt.localisation || "—"}</span>
-        <span>👤 ${bt.client || "—"}</span>
-        <span>${bt.atNum ? `🧾 ${bt.atNum}` : ""}</span>
+
+      <div class="btMeta">${bt.objet || ""}</div>
+      <div class="btMeta">👤 ${bt.client || "—"} ${bt.atNum ? ` • 🧾 ${bt.atNum}` : ""}</div>
+
+      <div class="briefDocs">
+        ${docBtns}
       </div>
-      <div class="briefItem__docs">${docsLine || ""}</div>
     `;
+
     list.appendChild(item);
   }
 }
@@ -471,6 +656,8 @@ function renderBrief(filtered) {
 // -------------------------
 function setView(view) {
   state.view = view;
+
+  document.body.classList.toggle("flip", view === "brief");
 
   const vRef = $("viewReferent");
   const vBrief = $("viewBrief");
@@ -530,6 +717,89 @@ function wireEvents() {
     });
   });
 
+  // Delegation clics BT/DOC (référent + brief)
+  const handleBtClick = (e) => {
+    const btn = e.target.closest("button[data-action]");
+    if (!btn) return;
+    const action = btn.getAttribute("data-action");
+    const btId = btn.getAttribute("data-bt") || "";
+    const page = parseInt(btn.getAttribute("data-page") || "", 10);
+    const type = btn.getAttribute("data-type") || "";
+
+    if (!btId) return;
+    state.selectedBtId = btId;
+    renderAll();
+
+    const range = getBtRange(btId);
+    const title = action === "open-doc" ? `${btId} — ${type}` : btId;
+    const subtitle = (state.pdfName ? state.pdfName + " • " : "") + (range ? `p.${range.start}→${range.end}` : "");
+
+    if (action === "open-bt") {
+      openViewer({ page: range?.start || 1, title, subtitle, btId, range });
+    }
+    if (action === "open-doc") {
+      openViewer({ page: Number.isFinite(page) ? page : (range?.start || 1), title, subtitle, btId, range });
+    }
+  };
+
+  const grid = $("btGrid");
+  if (grid) grid.addEventListener("click", handleBtClick);
+
+  const briefList = $("briefList");
+  if (briefList) briefList.addEventListener("click", handleBtClick);
+
+  // Modal: close
+  document.addEventListener("click", (e) => {
+    const close = e.target.closest("[data-close='1']");
+    if (!close) return;
+    closeViewer();
+  });
+
+  // Modal: prev/next/export
+  const prev = $("btnPrevPage");
+  if (prev) {
+    prev.addEventListener("click", async () => {
+      state.viewer.page = Math.max(1, state.viewer.page - 1);
+      await renderViewerPage(state.viewer.page);
+      syncViewerButtons();
+    });
+  }
+
+  const next = $("btnNextPage");
+  if (next) {
+    next.addEventListener("click", async () => {
+      state.viewer.page = Math.min(state.totalPages || 1, state.viewer.page + 1);
+      await renderViewerPage(state.viewer.page);
+      syncViewerButtons();
+    });
+  }
+
+  const exp = $("btnExportBt");
+  if (exp) {
+    exp.addEventListener("click", exportCurrentBt);
+  }
+
+  // Modal: ESC
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && state.viewer.isOpen) closeViewer();
+  });
+
+  // Fullscreen
+  const fs = $("btnFullscreen");
+  if (fs) {
+    fs.addEventListener("click", async () => {
+      try {
+        if (!document.fullscreenElement) {
+          await document.documentElement.requestFullscreen();
+        } else {
+          await document.exitFullscreen();
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    });
+  }
+
   // Import PDF
   const input = $("pdfFile");
   if (input) {
@@ -553,7 +823,8 @@ function wireEvents() {
         state.totalPages = state.pdf.numPages;
 
         console.log("[DEMAT-BT] PDF chargé ✅", state.totalPages, "pages");
-        setProgress(0, `PDF chargé (${state.totalPages} pages).`);
+        setPdfStatus(`${f.name} — ${state.totalPages} pages`);
+        setProgress(0, `PDF chargé (${state.totalPages} pages). Clique sur Extraire.`);
         setExtractEnabled(true);
       } catch (e) {
         console.error(e);

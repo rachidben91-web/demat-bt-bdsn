@@ -91,6 +91,9 @@ body{ margin:0; background:var(--bg); color:var(--txt); }
 }
 
 .btCard{ padding:12px; }
+.btCard{ transition: transform .08s ease, box-shadow .08s ease, border-color .08s ease; }
+.btCard:hover{ transform: translateY(-1px); box-shadow: 0 10px 26px rgba(15,23,42,0.10); }
+.btCard--selected{ border-color:#0f172a; box-shadow: 0 12px 30px rgba(15,23,42,0.14); }
 .btTop{ display:flex; justify-content:space-between; gap:10px; }
 .btId{ font-weight:900; }
 .badges{ display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
@@ -99,6 +102,14 @@ body{ margin:0; background:var(--bg); color:var(--txt); }
   font-size:11px; background:#fafbff; color:var(--muted);
 }
 .badge--strong{ background:#0f172a; color:#fff; border-color:#0f172a; }
+
+/* badges cliquables */
+button.badge{ cursor:pointer; }
+button.badge{ appearance:none; border:1px solid var(--line); }
+button.badge:hover{ border-color:#cbd5e1; box-shadow: 0 0 0 4px rgba(15,23,42,.05); }
+button.badge--strong:hover{ border-color:#0f172a; box-shadow: 0 0 0 4px rgba(15,23,42,.12); }
+
+button.badge:active{ transform: translateY(1px); }
 
 .btMeta{ font-size:12px; color:var(--muted); margin-top:8px; line-height:1.35; }
 .btActions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
@@ -125,6 +136,13 @@ body{ margin:0; background:var(--bg); color:var(--txt); }
   border:1px solid var(--line); background:#fff; border-radius:12px;
   padding:10px 12px; cursor:pointer; font-weight:800; font-size:12px; color:var(--txt);
 }
+.docBtn:hover{ border-color:#cbd5e1; box-shadow: 0 0 0 4px rgba(15,23,42,.05); }
+.docBtn:active{ transform: translateY(1px); }
+.docBtn:hover{ border-color:#cbd5e1; box-shadow: 0 0 0 4px rgba(15,23,42,.06); }
+.docBtn:active{ transform: translateY(1px); }
+
+/* brief cards reuse bt selected */
+.briefCard.btCard--selected{ border-color:#0f172a; }
 
 .modal{ position:fixed; inset:0; display:none; z-index:100; }
 .modal[aria-hidden="false"]{ display:block; }
