@@ -1,9 +1,10 @@
-/* app.js — DEMAT-BT (GitHub Pages)
+/* app.js — DEMAT-BT v2.0 (Version avec modal + viewer)
    Compatible avec TON index.html :
    - Référent:  #viewReferent + #btGrid + #kpis
    - Brief:     #viewBrief + #briefList + #briefMeta
    - Import PDF: input#pdfFile
    - Extraire:   button#btnExtract
+   - Modal viewer: #modal avec canvas
 */
 
 const DOC_TYPES = ["BT", "AT", "PROC", "PLAN", "PHOTO", "STREET", "DOC"];
@@ -21,7 +22,13 @@ const state = {
     types: new Set(),
     techId: ""
   },
-  countsByTechId: new Map()
+  countsByTechId: new Map(),
+  // modal viewer state
+  modal: {
+    open: false,
+    currentBT: null,
+    currentPage: 1
+  }
 };
 
 // -------------------------
@@ -53,7 +60,7 @@ function setExtractEnabled(enabled) {
 function norm(s) {
   return (s || "")
     .replace(/\s+/g, " ")
-    .replace(/[’]/g, "'")
+    .replace(/[']/g, "'")
     .trim();
 }
 
@@ -83,8 +90,7 @@ function getZoneBBox(label) {
 }
 
 // -------------------------
-// PDF.js via script tag (tu l’as déjà dans ton ancien setup ?)
-// Ici on utilise la version "déjà chargée" si tu l’as, sinon on charge.
+// PDF.js via script tag
 // -------------------------
 async function ensurePdfJs() {
   if (window.pdfjsLib) return;
@@ -287,39 +293,38 @@ function syncTypeChipsUI() {
 }
 
 // -------------------------
-// UI: select technicien avec compteurs
+// Tech select (avec compteurs)
 // -------------------------
 function buildTechSelectWithCounts() {
   const sel = $("techSelect");
   if (!sel) return;
 
+  const current = sel.value;
+  sel.innerHTML = '<option value="">— Tous —</option>';
+
   const techs = window.TECHNICIANS || [];
-  const items = [];
+  const withBt = techs.filter(t => {
+    const cnt = state.countsByTechId.get(techKey(t)) || 0;
+    return cnt > 0;
+  });
 
-  for (const t of techs) {
-    const key = techKey(t);
-    const c = state.countsByTechId.get(key) || 0;
-    if (c > 0) items.push({ ...t, count: c });
-  }
+  // tri alpha
+  withBt.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
-  items.sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name, "fr"));
-
-  const current = state.filters.techId || "";
-
-  sel.innerHTML = "";
-  const optAll = document.createElement("option");
-  optAll.value = "";
-  optAll.textContent = "— Tous —";
-  sel.appendChild(optAll);
-
-  for (const t of items) {
+  for (const t of withBt) {
+    const cnt = state.countsByTechId.get(techKey(t)) || 0;
     const opt = document.createElement("option");
     opt.value = techKey(t);
-    opt.textContent = `${t.name} (${t.count})`;
+    opt.textContent = `${t.name} (${cnt} BT)`;
     sel.appendChild(opt);
   }
 
-  sel.value = current;
+  // restore selection si encore valide
+  if (current && withBt.some(t => techKey(t) === current)) {
+    sel.value = current;
+  } else {
+    sel.value = "";
+  }
 }
 
 // -------------------------
@@ -364,8 +369,8 @@ function renderKpis(filtered) {
   const docsCount = filtered.reduce((acc, bt) => acc + (bt.docs?.length || 0), 0);
 
   kpis.innerHTML = `
-    <div class="kpi"><div class="kpi__v">${totalBT}</div><div class="kpi__l">BT</div></div>
-    <div class="kpi"><div class="kpi__v">${docsCount}</div><div class="kpi__l">Pages liées</div></div>
+    <div class="kpi"><b>${totalBT}</b> BT</div>
+    <div class="kpi"><b>${docsCount}</b> Pages liées</div>
   `;
 }
 
@@ -388,26 +393,63 @@ function renderReferent(filtered) {
       return tech ? tech.name : m.nni;
     }).join(" • ") || "—";
 
+    // Compter les docs par type
     const counts = {};
     for (const d of bt.docs || []) counts[d.type] = (counts[d.type] || 0) + 1;
-    const docChips = Object.keys(counts)
-      .map(t => `<span class="mini_chip">${t}:${counts[t]}</span>`)
-      .join(" ");
 
     const card = document.createElement("div");
-    card.className = "bt_card";
-    card.innerHTML = `
-      <div class="bt_title">${bt.id || "BT ?"}</div>
-      <div class="bt_sub">${bt.objet || ""}</div>
-      <div class="bt_meta">
-        <div>📅 ${bt.datePrevue || "—"}</div>
-        <div>👤 ${bt.client || "—"}</div>
-        <div>📍 ${bt.localisation || "—"}</div>
-        <div>👥 ${teamTxt}</div>
-        <div>${bt.atNum ? `🧾 ${bt.atNum}` : ""}</div>
-      </div>
-      <div class="bt_docchips">${docChips}</div>
+    card.className = "card btCard";
+    
+    // Top section avec ID et badges
+    const topDiv = document.createElement("div");
+    topDiv.className = "btTop";
+    
+    const idDiv = document.createElement("div");
+    idDiv.className = "btId";
+    idDiv.textContent = bt.id || "BT ?";
+    
+    const badgesDiv = document.createElement("div");
+    badgesDiv.className = "badges";
+    
+    // Créer des badges pour chaque type de doc
+    for (const [type, count] of Object.entries(counts)) {
+      const badge = document.createElement("span");
+      badge.className = type === "BT" ? "badge badge--strong" : "badge";
+      badge.textContent = `${type}:${count}`;
+      badgesDiv.appendChild(badge);
+    }
+    
+    topDiv.appendChild(idDiv);
+    topDiv.appendChild(badgesDiv);
+    
+    // Meta info
+    const metaDiv = document.createElement("div");
+    metaDiv.className = "btMeta";
+    metaDiv.innerHTML = `
+      <div>📅 ${bt.datePrevue || "—"}</div>
+      <div>📋 ${bt.objet || "—"}</div>
+      <div>👤 ${bt.client || "—"}</div>
+      <div>📍 ${bt.localisation || "—"}</div>
+      <div>👥 ${teamTxt}</div>
+      ${bt.atNum ? `<div>🧾 ${bt.atNum}</div>` : ""}
     `;
+    
+    // Actions (boutons pour voir les docs)
+    const actionsDiv = document.createElement("div");
+    actionsDiv.className = "btActions";
+    
+    // Créer un bouton pour chaque document
+    for (const doc of bt.docs || []) {
+      const btn = document.createElement("button");
+      btn.className = "btn btn--secondary";
+      btn.textContent = `${doc.type} (p.${doc.page})`;
+      btn.addEventListener("click", () => openModal(bt, doc.page));
+      actionsDiv.appendChild(btn);
+    }
+    
+    card.appendChild(topDiv);
+    card.appendChild(metaDiv);
+    card.appendChild(actionsDiv);
     grid.appendChild(card);
   }
 }
@@ -431,7 +473,7 @@ function renderBrief(filtered) {
 
   const techs = window.TECHNICIANS || [];
   const t = techs.find(x => techKey(x) === state.filters.techId);
-  if (meta) meta.textContent = t ? t.name : "";
+  if (meta) meta.textContent = t ? `${t.name} — ${filtered.length} BT` : "";
 
   list.innerHTML = "";
   if (filtered.length === 0) {
@@ -440,29 +482,151 @@ function renderBrief(filtered) {
   }
 
   for (const bt of filtered) {
-    const counts = {};
-    for (const d of bt.docs || []) counts[d.type] = (counts[d.type] || 0) + 1;
+    const card = document.createElement("div");
+    card.className = "card briefCard";
 
-    const docsLine = Object.keys(counts)
-      .map(k => `${k}:${counts[k]}`)
-      .join(" • ");
+    const titleDiv = document.createElement("div");
+    titleDiv.className = "briefTitle";
+    titleDiv.textContent = bt.id;
 
-    const item = document.createElement("div");
-    item.className = "briefItem";
-    item.innerHTML = `
-      <div class="briefItem__top">
-        <div class="briefItem__id">${bt.id}</div>
-        <div class="briefItem__date">${bt.datePrevue || ""}</div>
-      </div>
-      <div class="briefItem__obj">${bt.objet || ""}</div>
-      <div class="briefItem__meta">
-        <span>📍 ${bt.localisation || "—"}</span>
-        <span>👤 ${bt.client || "—"}</span>
-        <span>${bt.atNum ? `🧾 ${bt.atNum}` : ""}</span>
-      </div>
-      <div class="briefItem__docs">${docsLine || ""}</div>
+    const subDiv = document.createElement("div");
+    subDiv.className = "briefSub";
+    subDiv.innerHTML = `
+      <div>📋 ${bt.objet || "—"}</div>
+      <div>📅 ${bt.datePrevue || "—"}</div>
+      <div>👤 ${bt.client || "—"}</div>
+      <div>📍 ${bt.localisation || "—"}</div>
+      ${bt.atNum ? `<div>🧾 ${bt.atNum}</div>` : ""}
     `;
-    list.appendChild(item);
+
+    const docsDiv = document.createElement("div");
+    docsDiv.className = "briefDocs";
+
+    // Créer un bouton pour chaque document
+    for (const doc of bt.docs || []) {
+      const btn = document.createElement("button");
+      btn.className = "docBtn";
+      btn.textContent = `${doc.type} (p.${doc.page})`;
+      btn.addEventListener("click", () => openModal(bt, doc.page));
+      docsDiv.appendChild(btn);
+    }
+
+    card.appendChild(titleDiv);
+    card.appendChild(subDiv);
+    card.appendChild(docsDiv);
+    list.appendChild(card);
+  }
+}
+
+// -------------------------
+// Modal viewer
+// -------------------------
+function openModal(bt, pageNum) {
+  state.modal.open = true;
+  state.modal.currentBT = bt;
+  state.modal.currentPage = pageNum;
+
+  const modal = $("modal");
+  if (modal) modal.setAttribute("aria-hidden", "false");
+
+  const title = $("modalTitle");
+  if (title) title.textContent = `${bt.id} — Page ${pageNum}`;
+
+  const subtitle = $("modalSubtitle");
+  if (subtitle) subtitle.textContent = bt.objet || "";
+
+  renderPage(pageNum);
+}
+
+function closeModal() {
+  state.modal.open = false;
+  state.modal.currentBT = null;
+
+  const modal = $("modal");
+  if (modal) modal.setAttribute("aria-hidden", "true");
+}
+
+async function renderPage(pageNum) {
+  if (!state.pdf || pageNum < 1 || pageNum > state.totalPages) return;
+
+  const canvas = $("canvas");
+  if (!canvas) return;
+
+  const page = await state.pdf.getPage(pageNum);
+  const viewport = page.getViewport({ scale: 2.0 });
+
+  const ctx = canvas.getContext("2d");
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+
+  await page.render({ canvasContext: ctx, viewport }).promise;
+
+  const info = $("modalInfo");
+  if (info) info.textContent = `Page ${pageNum} / ${state.totalPages}`;
+
+  // Update modal title
+  const title = $("modalTitle");
+  if (title && state.modal.currentBT) {
+    title.textContent = `${state.modal.currentBT.id} — Page ${pageNum}`;
+  }
+
+  state.modal.currentPage = pageNum;
+}
+
+function nextPage() {
+  if (!state.modal.open) return;
+  const next = state.modal.currentPage + 1;
+  if (next <= state.totalPages) {
+    renderPage(next);
+  }
+}
+
+function prevPage() {
+  if (!state.modal.open) return;
+  const prev = state.modal.currentPage - 1;
+  if (prev >= 1) {
+    renderPage(prev);
+  }
+}
+
+// Export BT complet en PDF
+async function exportBTPDF() {
+  if (!state.modal.currentBT || !window.PDFLib) {
+    alert("Impossible d'exporter : pdf-lib non chargé");
+    return;
+  }
+
+  try {
+    const bt = state.modal.currentBT;
+    const pages = bt.docs.map(d => d.page);
+
+    // Charger le PDF original
+    const arrayBuf = await state.pdfFile.arrayBuffer();
+    const pdfDoc = await window.PDFLib.PDFDocument.load(arrayBuf);
+
+    // Créer un nouveau PDF
+    const newPdf = await window.PDFLib.PDFDocument.create();
+
+    // Copier les pages du BT
+    for (const pageNum of pages) {
+      const [copiedPage] = await newPdf.copyPages(pdfDoc, [pageNum - 1]);
+      newPdf.addPage(copiedPage);
+    }
+
+    // Sauvegarder
+    const pdfBytes = await newPdf.save();
+    const blob = new Blob([pdfBytes], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${bt.id}_export.pdf`;
+    a.click();
+
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error("Erreur export PDF:", e);
+    alert("Erreur lors de l'export PDF");
   }
 }
 
@@ -482,6 +646,13 @@ function setView(view) {
   document.querySelectorAll(".seg__btn[data-view]").forEach(b => {
     b.classList.toggle("seg__btn--active", b.getAttribute("data-view") === view);
   });
+
+  // Toggle flip mode for brief
+  if (view === "brief") {
+    document.body.classList.add("flip");
+  } else {
+    document.body.classList.remove("flip");
+  }
 
   renderAll();
 }
@@ -569,7 +740,7 @@ function wireEvents() {
   if (btn) {
     btn.addEventListener("click", async () => {
       try {
-        if (!state.pdf) { setProgress(0, "Choisis d’abord un PDF."); return; }
+        if (!state.pdf) { setProgress(0, "Choisis d'abord un PDF."); return; }
         setExtractEnabled(false);
         setProgress(0, "Extraction en cours…");
         await extractAll();
@@ -581,6 +752,48 @@ function wireEvents() {
       }
     });
   }
+
+  // Modal close
+  const modal = $("modal");
+  if (modal) {
+    modal.addEventListener("click", (e) => {
+      if (e.target.hasAttribute("data-close") || e.target.classList.contains("modal__backdrop")) {
+        closeModal();
+      }
+    });
+  }
+
+  // Modal navigation
+  const btnPrev = $("btnPrevPage");
+  if (btnPrev) btnPrev.addEventListener("click", prevPage);
+
+  const btnNext = $("btnNextPage");
+  if (btnNext) btnNext.addEventListener("click", nextPage);
+
+  // Modal export
+  const btnExport = $("btnExportBt");
+  if (btnExport) btnExport.addEventListener("click", exportBTPDF);
+
+  // Fullscreen
+  const btnFS = $("btnFullscreen");
+  if (btnFS) {
+    btnFS.addEventListener("click", () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+      } else {
+        document.exitFullscreen();
+      }
+    });
+  }
+
+  // Keyboard navigation dans modal
+  document.addEventListener("keydown", (e) => {
+    if (!state.modal.open) return;
+    
+    if (e.key === "ArrowLeft") prevPage();
+    if (e.key === "ArrowRight") nextPage();
+    if (e.key === "Escape") closeModal();
+  });
 }
 
 // -------------------------
