@@ -157,6 +157,55 @@ function detectDocTypeFromHeader(text) {
 }
 
 // -------------------------
+// Classification des interventions
+// -------------------------
+function classifyIntervention(bt) {
+  const objet = safeUpper(bt.objet || "");
+  
+  // Clientèle (bleu)
+  if (objet.includes("MISE EN SERVICE") || 
+      objet.includes("MISE OU REMISE EN SERVICE") ||
+      objet.includes("REMISE EN SERVICE") ||
+      objet.includes("MISE HORS SERVICE") ||
+      objet.includes("MHS") ||
+      objet.includes("MES") ||
+      objet.includes("COMPTEUR") ||
+      objet.includes("POSTE CLIENT")) {
+    return { category: "CLIENTELE", color: "#2563eb", icon: "🟦" };
+  }
+  
+  // Maintenance (vert)
+  if (objet.includes("MAINTENANCE") ||
+      objet.includes("CI-CM") ||
+      objet.includes("CICM") ||
+      objet.includes("ROBINET") ||
+      objet.includes("PREVENTIF")) {
+    return { category: "MAINTENANCE", color: "#10b981", icon: "🟩" };
+  }
+  
+  // Surveillance (orange)
+  if (objet.includes("SURVEILLANCE") ||
+      objet.includes("ADF") ||
+      objet.includes("SUIVI") ||
+      objet.includes("ALERTE") ||
+      objet.includes("FUITE") ||
+      objet.includes("LOCALISATION")) {
+    return { category: "SURVEILLANCE", color: "#f59e0b", icon: "🟧" };
+  }
+  
+  // Administratif (violet)
+  if (objet.includes("REUNION") ||
+      objet.includes("DIVERS") ||
+      objet.includes("ADMINISTRATIF") ||
+      objet.includes("FORMATION")) {
+    return { category: "ADMINISTRATIF", color: "#a855f7", icon: "🟪" };
+  }
+  
+  // Autre (gris)
+  return { category: "AUTRE", color: "#64748b", icon: "⬛" };
+}
+
+// -------------------------
 // Team parsing depuis REALISATION (NNI + nom)
 // Pattern NNI: 1 lettre + 5 chiffres (A94073)
 // -------------------------
@@ -413,8 +462,28 @@ function renderGrid(filtered, grid) {
     const counts = {};
     for (const d of bt.docs || []) counts[d.type] = (counts[d.type] || 0) + 1;
 
+    // Classification de l'intervention
+    const classification = classifyIntervention(bt);
+
     const card = document.createElement("div");
     card.className = "card btCard";
+    card.style.position = "relative";
+    
+    // Pastille de catégorie en haut à droite
+    const categoryBadge = document.createElement("div");
+    categoryBadge.className = "category-badge";
+    categoryBadge.style.cssText = `
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: ${classification.color};
+      box-shadow: 0 2px 8px ${classification.color}40;
+      border: 2px solid #fff;
+    `;
+    categoryBadge.title = classification.category;
     
     // Top section avec ID et badges
     const topDiv = document.createElement("div");
@@ -463,6 +532,7 @@ function renderGrid(filtered, grid) {
       actionsDiv.appendChild(btn);
     }
     
+    card.appendChild(categoryBadge);
     card.appendChild(topDiv);
     card.appendChild(metaDiv);
     card.appendChild(actionsDiv);
@@ -480,8 +550,8 @@ function renderTimeline(filtered, timeline) {
 
   // Définir les heures de travail (8h-18h)
   const hours = [];
-  for (let h = 8; h <= 18; h++) {
-    hours.push(`${h}h`);
+  for (let h = 8; h <= 17; h++) {
+    hours.push(`${h}h-${h+1}h`);
   }
 
   // Récupérer tous les techniciens qui ont des BT
@@ -511,7 +581,7 @@ function renderTimeline(filtered, timeline) {
   // Créer la grille
   const grid = document.createElement("div");
   grid.className = "timeline-grid";
-  grid.style.gridTemplateColumns = `200px repeat(${hours.length}, 1fr)`;
+  grid.style.gridTemplateColumns = `180px repeat(${hours.length}, minmax(100px, 1fr))`;
   grid.style.gridTemplateRows = `50px repeat(${techs.length}, auto)`;
 
   // Header: coin + heures
@@ -563,18 +633,26 @@ function renderTimeline(filtered, timeline) {
     avatar.textContent = techName.substring(0, 2).toUpperCase();
     
     const nameDiv = document.createElement("div");
+    nameDiv.style.fontSize = "12px";
+    nameDiv.style.lineHeight = "1.3";
     nameDiv.textContent = techName;
     
     techCell.appendChild(avatar);
     techCell.appendChild(nameDiv);
     row.appendChild(techCell);
 
-    // Cellules pour chaque heure
+    // Cellules pour chaque heure avec meilleure distribution
     const techBTs = btsByTech.get(techId) || [];
     
-    // Répartir les BT sur les heures (simple: on les étale sur la journée)
-    // Si on a des heures dans les BT, on pourrait les parser, sinon on répartit
-    const btsPerHour = Math.ceil(techBTs.length / hours.length);
+    // Distribution intelligente : répartir les BT uniformément sur la journée
+    const distribution = Array(hours.length).fill(null).map(() => []);
+    
+    techBTs.forEach((bt, idx) => {
+      // Calculer l'index de la cellule en fonction de la position du BT
+      const cellIdx = Math.floor((idx / techBTs.length) * hours.length);
+      const targetIdx = Math.min(cellIdx, hours.length - 1);
+      distribution[targetIdx].push(bt);
+    });
     
     for (let hourIdx = 0; hourIdx < hours.length; hourIdx++) {
       const cell = document.createElement("div");
@@ -582,28 +660,26 @@ function renderTimeline(filtered, timeline) {
       cell.style.gridRow = techIdx + 2;
       cell.style.gridColumn = hourIdx + 2;
 
-      // Ajouter les BT pour cette cellule
-      const startIdx = hourIdx * btsPerHour;
-      const endIdx = Math.min(startIdx + btsPerHour, techBTs.length);
-      const cellBTs = techBTs.slice(startIdx, endIdx);
+      const cellBTs = distribution[hourIdx];
 
       for (const bt of cellBTs) {
-        // Déterminer le type principal du BT (premier type non-BT, ou BT)
-        const mainType = bt.docs.find(d => d.type !== "BT")?.type || "BT";
+        const classification = classifyIntervention(bt);
         
         const btDiv = document.createElement("div");
-        btDiv.className = `timeline-bt timeline-bt--${mainType}`;
+        btDiv.className = `timeline-bt`;
+        btDiv.style.borderLeft = `4px solid ${classification.color}`;
+        btDiv.style.background = `linear-gradient(90deg, ${classification.color}15 0%, #fff 100%)`;
         
         const idDiv = document.createElement("div");
         idDiv.className = "timeline-bt-id";
         idDiv.textContent = bt.id;
         
-        const descDiv = document.createElement("div");
-        descDiv.className = "timeline-bt-desc";
-        descDiv.textContent = bt.objet || bt.localisation || "—";
+        const typeDiv = document.createElement("div");
+        typeDiv.className = "timeline-bt-desc";
+        typeDiv.textContent = classification.category;
         
         btDiv.appendChild(idDiv);
-        btDiv.appendChild(descDiv);
+        btDiv.appendChild(typeDiv);
         
         btDiv.addEventListener("click", () => openModal(bt, bt.pageStart));
         
@@ -701,6 +777,7 @@ function openModal(bt, pageNum) {
   if (subtitle) subtitle.textContent = bt.objet || "";
 
   renderPage(pageNum);
+  updateModalNavigation();
 }
 
 function closeModal() {
@@ -709,6 +786,33 @@ function closeModal() {
 
   const modal = $("modal");
   if (modal) modal.setAttribute("aria-hidden", "true");
+}
+
+function updateModalNavigation() {
+  const bt = state.modal.currentBT;
+  if (!bt) return;
+
+  const currentPage = state.modal.currentPage;
+  const btPages = bt.docs.map(d => d.page);
+  const minPage = Math.min(...btPages);
+  const maxPage = Math.max(...btPages);
+
+  const btnPrev = $("btnPrevPage");
+  const btnNext = $("btnNextPage");
+
+  if (btnPrev) {
+    btnPrev.disabled = currentPage <= minPage;
+  }
+
+  if (btnNext) {
+    btnNext.disabled = currentPage >= maxPage;
+  }
+
+  const info = $("modalInfo");
+  if (info) {
+    const pageIdx = btPages.indexOf(currentPage);
+    info.textContent = `Page ${currentPage} (${pageIdx + 1}/${btPages.length} du BT)`;
+  }
 }
 
 async function renderPage(pageNum) {
@@ -726,31 +830,36 @@ async function renderPage(pageNum) {
 
   await page.render({ canvasContext: ctx, viewport }).promise;
 
-  const info = $("modalInfo");
-  if (info) info.textContent = `Page ${pageNum} / ${state.totalPages}`;
-
-  // Update modal title
   const title = $("modalTitle");
   if (title && state.modal.currentBT) {
     title.textContent = `${state.modal.currentBT.id} — Page ${pageNum}`;
   }
 
   state.modal.currentPage = pageNum;
+  updateModalNavigation();
 }
 
 function nextPage() {
-  if (!state.modal.open) return;
-  const next = state.modal.currentPage + 1;
-  if (next <= state.totalPages) {
-    renderPage(next);
+  if (!state.modal.open || !state.modal.currentBT) return;
+  
+  const bt = state.modal.currentBT;
+  const btPages = bt.docs.map(d => d.page).sort((a, b) => a - b);
+  const currentIdx = btPages.indexOf(state.modal.currentPage);
+  
+  if (currentIdx < btPages.length - 1) {
+    renderPage(btPages[currentIdx + 1]);
   }
 }
 
 function prevPage() {
-  if (!state.modal.open) return;
-  const prev = state.modal.currentPage - 1;
-  if (prev >= 1) {
-    renderPage(prev);
+  if (!state.modal.open || !state.modal.currentBT) return;
+  
+  const bt = state.modal.currentBT;
+  const btPages = bt.docs.map(d => d.page).sort((a, b) => a - b);
+  const currentIdx = btPages.indexOf(state.modal.currentPage);
+  
+  if (currentIdx > 0) {
+    renderPage(btPages[currentIdx - 1]);
   }
 }
 
