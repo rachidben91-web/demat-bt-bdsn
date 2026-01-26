@@ -91,11 +91,32 @@ async function loadPdfJs() {
 // Zones loader
 // -----------------------------
 async function loadZones() {
-  if (ZONES) return ZONES;
-  const res = await fetch(`./zones.json?v=${Date.now()}`, { cache: "no-store" });
-  if (!res.ok) throw new Error("zones.json introuvable (404). Vérifie le nom et l'emplacement.");
-  ZONES = await res.json();
-  return ZONES;
+  try {
+    if (ZONES) return ZONES;
+
+    setStatus("Chargement des zones…");
+
+    const url = `./zones.json?v=${Date.now()}`;
+    const res = await fetch(url, { cache: "no-store" });
+
+    if (!res.ok) {
+      throw new Error(`zones.json introuvable (HTTP ${res.status}) — URL: ${url}`);
+    }
+
+    ZONES = await res.json();
+
+    // Mini check : le JSON doit contenir pages.BT
+    if (!ZONES?.pages?.BT) {
+      throw new Error("zones.json chargé mais format inattendu (attendu: pages.BT...)");
+    }
+
+    setStatus("Zones chargées ✔️");
+    return ZONES;
+  } catch (err) {
+    console.error("Erreur loadZones():", err);
+    setStatus("Erreur zones: " + (err?.message || err));
+    throw err;
+  }
 }
 
 function getZoneBBox(label) {
