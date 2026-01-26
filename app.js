@@ -213,27 +213,66 @@ function classifyIntervention(bt) {
 // Extraction des heures de début et fin
 // -------------------------
 function extractTimeSlot(bt) {
-  // Essayer d'extraire depuis la désignation
   const desi = bt.designation || "";
+  const duree = bt.duree || "";
   
-  // Pattern : 07h30 - 16h30 ou 7h30 - 16h30 ou 07:30 - 16:30
-  const timePattern = /(\d{1,2})[:h](\d{2})\s*[-–]\s*(\d{1,2})[:h](\d{2})/i;
-  const match = desi.match(timePattern);
+  // Pattern complet : 07h30 - 16h30 ou 7h30 - 16h30 ou 07:30 - 16:30
+  const fullTimePattern = /(\d{1,2})[:h](\d{2})\s*[-–]\s*(\d{1,2})[:h](\d{2})/i;
+  const fullMatch = desi.match(fullTimePattern);
   
-  if (match) {
-    const startHour = parseInt(match[1]);
-    const startMin = parseInt(match[2]);
-    const endHour = parseInt(match[3]);
-    const endMin = parseInt(match[4]);
+  if (fullMatch) {
+    // On a trouvé les deux heures dans DESIGNATION
+    const startHour = parseInt(fullMatch[1]);
+    const startMin = parseInt(fullMatch[2]);
+    const endHour = parseInt(fullMatch[3]);
+    const endMin = parseInt(fullMatch[4]);
     
     return {
       start: startHour + startMin / 60,
       end: endHour + endMin / 60,
-      text: `${match[1]}h${match[2]} - ${match[3]}h${match[4]}`
+      text: `${fullMatch[1]}h${fullMatch[2]} - ${fullMatch[3]}h${fullMatch[4]}`
     };
   }
   
-  // Sinon, retourner une durée par défaut (2h)
+  // Essayer d'extraire juste l'heure de début + utiliser DUREE
+  const startPattern = /(\d{1,2})[:h](\d{2})/i;
+  const startMatch = desi.match(startPattern);
+  
+  // Pattern durée : 8h00, 2h30, etc.
+  const dureePattern = /(\d{1,2})[:h](\d{2})/i;
+  const dureeMatch = duree.match(dureePattern);
+  
+  if (startMatch && dureeMatch) {
+    const startHour = parseInt(startMatch[1]);
+    const startMin = parseInt(startMatch[2]);
+    const dureeHour = parseInt(dureeMatch[1]);
+    const dureeMin = parseInt(dureeMatch[2]);
+    
+    const start = startHour + startMin / 60;
+    const duration = dureeHour + dureeMin / 60;
+    const end = start + duration;
+    
+    return {
+      start: start,
+      end: end,
+      text: `${startMatch[1]}h${startMatch[2]} (${duree})`
+    };
+  }
+  
+  // Si on a juste la durée, on suppose un début à 8h
+  if (dureeMatch) {
+    const dureeHour = parseInt(dureeMatch[1]);
+    const dureeMin = parseInt(dureeMatch[2]);
+    const duration = dureeHour + dureeMin / 60;
+    
+    return {
+      start: 8,
+      end: 8 + duration,
+      text: `8h00 (${duree})`
+    };
+  }
+  
+  // Sinon, retourner null
   return null;
 }
 
@@ -277,6 +316,7 @@ async function extractAll() {
   const bbAT = getZoneBBox("AT_NUM");
   const bbREAL = getZoneBBox("REALISATION");
   const bbDESI = getZoneBBox("DESIGNATION");
+  const bbDUREE = getZoneBBox("DUREE"); // Nouveau: durée prévue
 
   state.bts = [];
   state.countsByTechId = new Map();
@@ -300,6 +340,7 @@ async function extractAll() {
       const atNum = pickATId(atNumTxt);
       const realTxt = norm(await extractTextInBBox(page, bbREAL));
       const desiTxt = norm(await extractTextInBBox(page, bbDESI));
+      const dureeTxt = norm(await extractTextInBBox(page, bbDUREE)); // Durée prévue
 
       const team = parseTeamFromRealisation(realTxt);
 
@@ -313,6 +354,7 @@ async function extractAll() {
         atNum,
         team,
         designation: desiTxt,
+        duree: dureeTxt, // Stocker la durée
         docs: [{ page: p, type: "BT" }]
       };
 
@@ -552,6 +594,7 @@ function renderGrid(filtered, grid) {
     metaDiv.className = "btMeta";
     metaDiv.innerHTML = `
       <div>📅 ${bt.datePrevue || "—"}</div>
+      ${bt.duree ? `<div>⏱️ Durée: ${bt.duree}</div>` : ""}
       <div>📋 ${bt.objet || "—"}</div>
       <div>👤 ${bt.client || "—"}</div>
       <div>📍 ${bt.localisation || "—"}</div>
@@ -693,26 +736,48 @@ function renderTimeline(filtered, timeline) {
     // Ajouter les BT pour ce technicien
     const techBTs = btsByTech.get(techId) || [];
     
-    techBTs.forEach(bt => {
+    // Répartition automatique pour les BT sans horaires
+    let autoSlotIndex = 0;
+    const slotsPerBT = Math.floor(hours.length / (techBTs.length || 1));
+    
+    techBTs.forEach((bt, btIndex) => {
       const timeSlot = extractTimeSlot(bt);
       const classification = classifyIntervention(bt);
+      
+      // Debug
+      if (btIndex === 0) {
+        console.log(`[${techName}] BT ${bt.id}:`, {
+          designation: bt.designation,
+          duree: bt.duree,
+          timeSlot
+        });
+      }
       
       let startCol, colSpan;
       
       if (timeSlot) {
         // Utiliser les heures réelles
-        const startHour = timeSlot.start;
-        const endHour = timeSlot.end;
+        let startHour = timeSlot.start;
+        let endHour = timeSlot.end;
+        
+        // Limiter aux heures de travail (8h-18h)
+        startHour = Math.max(8, Math.min(17, startHour));
+        endHour = Math.max(8, Math.min(18, endHour));
         
         // Calculer la colonne de début (8h = col 2, 9h = col 3, etc.)
-        startCol = Math.max(2, Math.floor(startHour - 8) + 2);
-        const endCol = Math.min(hours.length + 1, Math.ceil(endHour - 8) + 2);
+        startCol = Math.floor(startHour - 8) + 2;
+        const endCol = Math.ceil(endHour - 8) + 2;
         colSpan = Math.max(1, endCol - startCol);
       } else {
-        // Pas d'horaire trouvé, placer de manière aléatoire sur 2 créneaux
-        const randStart = Math.floor(Math.random() * (hours.length - 1));
-        startCol = randStart + 2;
-        colSpan = 2;
+        // Pas d'horaire trouvé, placement automatique
+        startCol = autoSlotIndex + 2;
+        colSpan = Math.max(1, slotsPerBT);
+        autoSlotIndex += colSpan;
+        
+        // Ne pas dépasser la fin de journée
+        if (startCol + colSpan > hours.length + 2) {
+          startCol = hours.length + 2 - colSpan;
+        }
       }
       
       const btDiv = document.createElement("div");
@@ -753,6 +818,9 @@ function renderTimeline(filtered, timeline) {
       `;
       typeDiv.textContent = classification.label;
       
+      btDiv.appendChild(idDiv);
+      btDiv.appendChild(typeDiv);
+      
       if (timeSlot && colSpan >= 3) {
         const timeDiv = document.createElement("div");
         timeDiv.style.cssText = `
@@ -763,9 +831,6 @@ function renderTimeline(filtered, timeline) {
         timeDiv.textContent = timeSlot.text;
         btDiv.appendChild(timeDiv);
       }
-      
-      btDiv.appendChild(idDiv);
-      btDiv.appendChild(typeDiv);
       
       btDiv.addEventListener("click", () => openModal(bt, bt.pageStart));
       btDiv.addEventListener("mouseenter", () => {
@@ -854,6 +919,7 @@ function renderBrief(filtered) {
     subDiv.innerHTML = `
       <div>📋 ${bt.objet || "—"}</div>
       <div>📅 ${bt.datePrevue || "—"}</div>
+      ${bt.duree ? `<div>⏱️ Durée: ${bt.duree}</div>` : ""}
       <div>👤 ${bt.client || "—"}</div>
       <div>📍 ${bt.localisation || "—"}</div>
       ${bt.atNum ? `<div>🧾 ${bt.atNum}</div>` : ""}
