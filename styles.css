@@ -777,3 +777,79 @@ body.flip .briefList{ grid-template-columns: 1fr; } /* Flip = vertical reading *
   border-left:1px solid rgba(255,255,255,0.05);
   background: rgba(0,0,0,0.08);
 }
+
+
+/* --- Version badge --- */
+.brand__version{
+  margin-top: 4px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.65);
+  letter-spacing: .08em;
+}
+
+/* --- Timeline readability --- */
+.timelineHour{
+  white-space: nowrap;
+  font-size: 11px;
+  color: rgba(255,255,255,0.62);
+}
+.timelineStrip{
+  background: rgba(255,255,255,0.02);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  border-right: 1px solid rgba(255,255,255,0.04);
+}
+
+/* --- Brief timeline (Flip) --- */
+.briefTimelineWrap{
+  position: relative;
+  padding: 12px 10px 14px;
+}
+.briefTimelineRail{
+  position: relative;
+  height: 18px;
+  margin-bottom: 10px;
+}
+.briefTick{
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255,255,255,0.10);
+}
+.briefTickLabel{
+  position: absolute;
+  top: -16px;
+  left: 6px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.55);
+  white-space: nowrap;
+}
+.briefLanes{
+  position: relative;
+}
+.briefLaneRow{
+  position: relative;
+  margin: 8px 0;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.05);
+  overflow: hidden;
+}
+.briefBlock{
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  border-radius: 12px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.briefBlockId{
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1.1;
+}
+.briefBlockSub{
+  margin-top: 4px;
+  font-size: 11px;
+  opacity: .85;
+}

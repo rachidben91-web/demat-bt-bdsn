@@ -43,6 +43,9 @@
 const DOC_TYPES = ["BT", "AT", "PROC", "PLAN", "PHOTO", "STREET", "DOC"];
 let ZONES = null;
 
+// ---- Version ----
+const APP_VERSION = "v1.3.0";
+
 const state = {
   pdf: null,
   pdfFile: null,
@@ -90,6 +93,12 @@ function setPdfStatus(msg) {
   const el = $("pdfStatus");
   if (el) el.textContent = msg;
 }
+
+function setVersionBadge(){
+  const el = $("appVersion");
+  if (el) el.textContent = APP_VERSION;
+}
+
 function setProgress(pct, msg) {
   const bar = $("progBar");
   const m = $("progMsg");
@@ -358,8 +367,13 @@ function extractTimeSlot(bt) {
     const startMin = parseInt(grdfMatch[2]);
     const endHour = parseInt(grdfMatch[3]);
     const endMin = parseInt(grdfMatch[4]);
+    let startTotal = startHour*60 + startMin;
+    let endTotal = endHour*60 + endMin;
+    if (endTotal <= startTotal) endTotal += 24*60;
     
     return {
+      startMin: startTotal,
+      endMin: endTotal,
       start: startHour + startMin / 60,
       end: endHour + endMin / 60,
       text: `${grdfMatch[1]}h${grdfMatch[2]} - ${grdfMatch[3]}h${grdfMatch[4]}`
@@ -375,8 +389,13 @@ function extractTimeSlot(bt) {
     const startMin = parseInt(simpleMatch[2]);
     const endHour = parseInt(simpleMatch[3]);
     const endMin = parseInt(simpleMatch[4]);
+    let startTotal = startHour*60 + startMin;
+    let endTotal = endHour*60 + endMin;
+    if (endTotal <= startTotal) endTotal += 24*60;
     
     return {
+      startMin: startTotal,
+      endMin: endTotal,
       start: startHour + startMin / 60,
       end: endHour + endMin / 60,
       text: `${simpleMatch[1]}h${simpleMatch[2]} - ${simpleMatch[3]}h${simpleMatch[4]}`
@@ -392,6 +411,8 @@ function extractTimeSlot(bt) {
     const endMin = parseInt(desiMatch[4]);
     
     return {
+      startMin: startTotal,
+      endMin: endTotal,
       start: startHour + startMin / 60,
       end: endHour + endMin / 60,
       text: `${desiMatch[1]}h${desiMatch[2]} - ${desiMatch[3]}h${desiMatch[4]}`
@@ -752,398 +773,234 @@ function renderGrid(filtered, grid) {
   }
 }
 
-function renderTimeline(filtered, timeline) {
-  timeline.innerHTML = "";
-  
-  if (filtered.length === 0) {
-    timeline.innerHTML = `<div class="timeline-empty">Aucun BT à afficher avec ces filtres.</div>`;
-    return;
-  }
-
-  // Définir les heures de travail (8h-18h)
-  const hours = [];
-  for (let h = 8; h <= 17; h++) {
-    hours.push({ start: h, end: h + 1, label: `${h}h-${h+1}h` });
-  }
-
-  // Récupérer tous les techniciens qui ont des BT
-  const techSet = new Map();
-  for (const bt of filtered) {
-    for (const member of bt.team || []) {
-      const tech = mapTechByNni(member.nni);
-      if (tech) {
-        const key = techKey(tech);
-        if (!techSet.has(key)) {
-          techSet.set(key, tech.name);
-        }
-      }
-    }
-  }
-
-  if (techSet.size === 0) {
-    timeline.innerHTML = `<div class="timeline-empty">Aucun technicien trouvé pour ces BT.</div>`;
-    return;
-  }
-
-  // Trier les techniciens par nom
-  const techs = Array.from(techSet.entries()).sort((a, b) => 
-    a[1].localeCompare(b[1])
-  );
-
-  // Créer une map BT par technicien
-  const btsByTech = new Map();
-  for (const bt of filtered) {
-    for (const member of bt.team || []) {
-      const tech = mapTechByNni(member.nni);
-      if (tech) {
-        const key = techKey(tech);
-        if (!btsByTech.has(key)) {
-          btsByTech.set(key, []);
-        }
-        btsByTech.get(key).push(bt);
-      }
-    }
-  }
-
-  // Calculer le nombre de sous-lignes nécessaires pour chaque technicien
-  const techRowCounts = new Map();
-  for (const [techId, techBTs] of btsByTech.entries()) {
-    // Préparer les BT avec leurs créneaux
-    const btsWithSlots = techBTs.map(bt => {
-      const timeSlot = extractTimeSlot(bt);
-      let startCol, endCol;
-      
-      if (timeSlot) {
-        let startHour = Math.max(8, Math.min(17, timeSlot.start));
-        let endHour = Math.max(8, Math.min(18, timeSlot.end));
-        startCol = Math.floor(startHour - 8) + 2;
-        endCol = Math.ceil(endHour - 8) + 2;
-      } else {
-        startCol = 2;
-        endCol = 4;
-      }
-      
-      return { bt, startCol, endCol, timeSlot };
-    });
-    
-    // Détecter les chevauchements et assigner des tracks
-    const tracks = [];
-    for (const item of btsWithSlots) {
-      let placed = false;
-      for (let trackIdx = 0; trackIdx < tracks.length; trackIdx++) {
-        const track = tracks[trackIdx];
-        const hasOverlap = track.some(existing => 
-          !(item.endCol <= existing.startCol || item.startCol >= existing.endCol)
-        );
-        
-        if (!hasOverlap) {
-          track.push(item);
-          item.track = trackIdx;
-          placed = true;
-          break;
-        }
-      }
-      
-      if (!placed) {
-        tracks.push([item]);
-        item.track = tracks.length - 1;
-      }
-    }
-    
-    techRowCounts.set(techId, { count: tracks.length, btsWithSlots });
-  }
-
-  // Calculer le total de rows
-  let totalRows = 0;
-  const techRowStarts = new Map();
-  for (const [techId] of techs) {
-    techRowStarts.set(techId, totalRows + 2); // +2 pour le header
-    const rowCount = techRowCounts.get(techId)?.count || 1;
-    totalRows += rowCount;
-  }
-
-  // Créer la grille
-  const container = document.createElement("div");
-  container.style.cssText = "position:relative; overflow-x:auto; background:var(--card); border-radius:var(--radius); border:1.5px solid var(--line); box-shadow:var(--shadow);";
-
-  const grid = document.createElement("div");
-  grid.className = "timeline-grid";
-  grid.style.gridTemplateColumns = `180px repeat(${hours.length}, minmax(100px, 1fr))`;
-  grid.style.minWidth = `${180 + hours.length * 140}px`;
-  grid.style.gridTemplateRows = `50px repeat(${totalRows}, 70px)`;
-  grid.style.position = "relative";
-
-  // Header
-  const header = document.createElement("div");
-  header.className = "timeline-header";
-
-  const corner = document.createElement("div");
-  corner.className = "timeline-corner";
-  corner.textContent = "Techniciens";
-  header.appendChild(corner);
-
-  for (let i = 0; i < hours.length; i++) {
-    const hourCell = document.createElement("div");
-    hourCell.className = "timeline-hour";
-    hourCell.style.gridColumn = i + 2;
-    hourCell.textContent = hours[i].label;
-    header.appendChild(hourCell);
-  }
-
-  grid.appendChild(header);
-
-  // Lignes: techniciens + cellules vides
-  techs.forEach(([techId, techName]) => {
-    const rowStart = techRowStarts.get(techId);
-    const rowCount = techRowCounts.get(techId)?.count || 1;
-    
-    // Nom du technicien (span sur toutes ses rows)
-    const techCell = document.createElement("div");
-    techCell.className = "timeline-tech";
-    techCell.style.gridRow = `${rowStart} / span ${rowCount}`;
-    
-    const avatar = document.createElement("div");
-    avatar.className = "timeline-tech-avatar";
-    avatar.textContent = techName.substring(0, 2).toUpperCase();
-    
-    const nameDiv = document.createElement("div");
-    nameDiv.style.fontSize = "12px";
-    nameDiv.style.lineHeight = "1.3";
-    nameDiv.textContent = techName;
-    
-    techCell.appendChild(avatar);
-    techCell.appendChild(nameDiv);
-    grid.appendChild(techCell);
-
-    // Cellules vides
-    for (let rowIdx = 0; rowIdx < rowCount; rowIdx++) {
-      for (let hourIdx = 0; hourIdx < hours.length; hourIdx++) {
-        const cell = document.createElement("div");
-        cell.className = "timeline-cell";
-        cell.style.gridRow = rowStart + rowIdx;
-        cell.style.gridColumn = hourIdx + 2;
-        grid.appendChild(cell);
-      }
-    }
-
-    // Ajouter les BT
-    const techData = techRowCounts.get(techId);
-    if (techData) {
-      for (const item of techData.btsWithSlots) {
-        const { bt, startCol, endCol, timeSlot, track } = item;
-        const classification = classifyIntervention(bt);
-        const colSpan = Math.max(1, endCol - startCol);
-        
-        // Debug pour le premier BT
-        if (item === techData.btsWithSlots[0]) {
-          console.log(`[${techName}] BT ${bt.id}:`, {
-            designation: bt.designation,
-            duree: bt.duree,
-            timeSlot,
-            startCol,
-            endCol,
-            colSpan,
-            track
-          });
-        }
-        
-        const btDiv = document.createElement("div");
-        btDiv.className = "timeline-bt-block";
-        btDiv.style.cssText = `
-          grid-row: ${rowStart + track};
-          grid-column: ${startCol} / span ${colSpan};
-          background: ${classification.color}20;
-          border: 2px solid ${classification.color};
-          border-radius: var(--radius-xs);
-          padding: 6px 8px;
-          cursor: pointer;
-          transition: var(--transition);
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-          min-height: 50px;
-          justify-content: center;
-        `;
-        
-        const idDiv = document.createElement("div");
-        idDiv.style.cssText = `
-          font-weight: 800;
-          font-size: 11px;
-          color: ${classification.color};
-          line-height: 1.2;
-        `;
-        idDiv.textContent = bt.id;
-        
-        const typeDiv = document.createElement("div");
-        typeDiv.style.cssText = `
-          font-size: 9px;
-          font-weight: 700;
-          color: ${classification.color};
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          line-height: 1.2;
-        `;
-        typeDiv.textContent = classification.label;
-        
-        btDiv.appendChild(idDiv);
-        btDiv.appendChild(typeDiv);
-        
-        if (timeSlot && colSpan >= 3) {
-          const timeDiv = document.createElement("div");
-          timeDiv.style.cssText = `
-            font-size: 8px;
-            color: ${classification.color}CC;
-            margin-top: 2px;
-          `;
-          timeDiv.textContent = timeSlot.text;
-          btDiv.appendChild(timeDiv);
-        }
-        
-        btDiv.addEventListener("click", () => openModal(bt, bt.pageStart));
-        btDiv.addEventListener("mouseenter", () => {
-          btDiv.style.transform = "translateY(-2px)";
-          btDiv.style.boxShadow = "var(--shadow)";
-          btDiv.style.zIndex = "10";
-        });
-        btDiv.addEventListener("mouseleave", () => {
-          btDiv.style.transform = "translateY(0)";
-          btDiv.style.boxShadow = "none";
-          btDiv.style.zIndex = "1";
-        });
-        
-        grid.appendChild(btDiv);
-      }
-    }
-  });
-
-  container.appendChild(grid);
-  timeline.appendChild(container);
-}
-function renderBriefTimeline(filtered) {
-  const host = $("briefTimeline");
+function renderTimeline(filtered) {
+  const host = $("referentContent");
   if (!host) return;
 
   host.innerHTML = "";
 
-  if (!state.filters.techId) {
-    host.innerHTML = `<div class="hint" style="padding:16px;">Sélectionne un technicien pour afficher la timeline.</div>`;
-    return;
-  }
+  // ----- Timeline settings (minute-precise) -----
+  const DAY_START = 7 * 60 + 30; // 07:30
+  const DAY_END   = 17 * 60;     // 17:00
+  const SLOT_MIN  = 30;          // 30-min grid => avoids faux chevauchements
+  const TOTAL_MIN = DAY_END - DAY_START;
+  const cols = Math.ceil(TOTAL_MIN / SLOT_MIN); // 19 colonnes
 
-  if (!filtered || filtered.length === 0) {
-    host.innerHTML = `<div class="hint" style="padding:16px;">Aucun BT à afficher sur la timeline.</div>`;
-    return;
-  }
-
-  // Collect time slots
-  const items = [];
+  // ----- Collect by tech -----
+  const byTech = new Map(); // techLabel => bt[]
   for (const bt of filtered) {
     const slot = extractTimeSlot(bt);
-    if (slot) items.push({ bt, slot });
+    if (!slot) continue;
+
+    // clamp inside the day (still keep relative sizing)
+    const s = Math.max(DAY_START, Math.min(DAY_END, slot.startMin));
+    const e = Math.max(DAY_START, Math.min(DAY_END, slot.endMin));
+    if (e <= s) continue;
+
+    const team = bt.team || [];
+    const first = team[0] || null;
+    const tech = first ? mapTechByNni(first.nni) : null;
+    const label = tech ? tech.name : (first?.name || "—");
+
+    if (!byTech.has(label)) byTech.set(label, []);
+    byTech.get(label).push({ bt, slot: { ...slot, startMin: s, endMin: e } });
   }
 
-  if (items.length === 0) {
-    host.innerHTML = `<div class="hint" style="padding:16px;">Aucun créneau horaire détecté sur ces BT.</div>`;
+  if (byTech.size === 0) {
+    host.innerHTML = `<div class="hint">Aucun créneau horaire détecté (données DUREE) pour afficher une timeline.</div>`;
     return;
   }
 
-  // Determine hour range (default 7-18)
-  let minH = 7, maxH = 18;
-  const minStart = Math.min(...items.map(x => x.slot.start));
-  const maxEnd = Math.max(...items.map(x => x.slot.end));
-  if (isFinite(minStart) && isFinite(maxEnd)) {
-    minH = Math.max(6, Math.floor(minStart));
-    maxH = Math.min(20, Math.ceil(maxEnd));
-    if (maxH - minH < 6) { minH = Math.max(6, minH - 1); maxH = Math.min(20, maxH + 1); }
-  }
-
-  const hours = [];
-  for (let h = minH; h < maxH; h++) hours.push(h);
-
-  // Layout constants
-  const hourPx = 90;
-  const pad = 12;
-  const canvasW = Math.max(980, (hours.length) * hourPx + pad*2);
-
-  // Assign lanes to avoid overlap
-  items.sort((a,b)=>a.slot.start - b.slot.start);
-  const lanes = []; // lane end time
-  for (const it of items) {
-    let lane = lanes.findIndex(end => end <= it.slot.start);
-    if (lane === -1) { lane = lanes.length; lanes.push(it.slot.end); }
-    else lanes[lane] = it.slot.end;
-    it.lane = lane;
-  }
-  const laneH = 52;
-  const canvasH = Math.max(220, 60 + (lanes.length) * laneH);
-
-  const canvas = document.createElement("div");
-  canvas.className = "briefTimeline__canvas";
-  canvas.style.width = canvasW + "px";
-  canvas.style.height = canvasH + "px";
-
-  // Hours row
-  const hoursRow = document.createElement("div");
-  hoursRow.className = "briefTimeline__hours";
-  for (const h of hours) {
-    const el = document.createElement("div");
-    el.className = "briefTimeline__hour";
-    el.style.width = hourPx + "px";
-    el.textContent = `${String(h).padStart(2,"0")}h`;
-    hoursRow.appendChild(el);
-  }
-  canvas.appendChild(hoursRow);
-
-  // Grid lines
+  // ----- Grid skeleton -----
   const grid = document.createElement("div");
-  grid.className = "briefTimeline__grid";
-  for (let i=0;i<=hours.length;i++){
-    const gl = document.createElement("div");
-    gl.className = "briefTimeline__gridLine";
-    gl.style.left = (pad + i*hourPx) + "px";
-    grid.appendChild(gl);
+  grid.className = "timelineGrid";
+  grid.style.gridTemplateColumns = `220px repeat(${cols}, minmax(46px, 1fr))`;
+
+  // Header: top-left corner
+  const corner = document.createElement("div");
+  corner.className = "timelineCorner";
+  corner.textContent = "Techniciens";
+  grid.appendChild(corner);
+
+  // Header: 30-min ticks (07:30, 08:00, ...)
+  for (let i = 0; i < cols; i++) {
+    const tMin = DAY_START + i * SLOT_MIN;
+    const hh = Math.floor(tMin / 60).toString().padStart(2, "0");
+    const mm = (tMin % 60).toString().padStart(2, "0");
+    const cell = document.createElement("div");
+    cell.className = "timelineHour";
+    cell.style.gridColumn = (i + 2);
+    cell.textContent = `${hh}:${mm}`;
+    grid.appendChild(cell);
   }
-  canvas.appendChild(grid);
 
-  const track = document.createElement("div");
-  track.className = "briefTimeline__track";
-  canvas.appendChild(track);
+  // Tech rows
+  let rowIndex = 2;
+  for (const [techLabel, items] of byTech.entries()) {
+    // Left label
+    const techCell = document.createElement("div");
+    techCell.className = "timelineTech";
+    techCell.style.gridRow = rowIndex;
+    techCell.textContent = techLabel;
+    grid.appendChild(techCell);
 
-  // Blocks
-  for (const it of items) {
-    const { bt, slot } = it;
-    const classification = classifyIntervention(bt);
+    // Allocate lanes with minute precision (no rounding overlap)
+    const lanes = []; // each lane: [{startMin,endMin}]
+    const sorted = items.slice().sort((a,b) => a.slot.startMin - b.slot.startMin);
 
-    const left = pad + (slot.start - minH) * hourPx;
-    const width = Math.max(90, (slot.end - slot.start) * hourPx - 6);
-    const top = 6 + it.lane * laneH;
-
-    const block = document.createElement("div");
-    block.className = "briefTimeline__block";
-    block.style.left = left + "px";
-    block.style.width = width + "px";
-    block.style.top = top + "px";
-    block.style.background = classification.color;
-
-    block.innerHTML = `
-      <div class="briefTimeline__id">${escapeHtml(bt.id || "")}</div>
-      <div class="briefTimeline__time">${escapeHtml(slot.text || "")}</div>
-    `;
-
-    block.addEventListener("click", () => {
-      // Scroll to card if present, else open first doc/BT
-      const card = document.getElementById(`briefCard-${bt.id}`);
-      if (card) {
-        card.scrollIntoView({ behavior: "smooth", block: "start" });
-        card.classList.add("pulse");
-        setTimeout(()=>card.classList.remove("pulse"), 650);
+    for (const it of sorted) {
+      let lane = 0;
+      while (lane < lanes.length) {
+        const last = lanes[lane][lanes[lane].length - 1];
+        if (it.slot.startMin >= last.endMin) break;
+        lane++;
       }
+      if (!lanes[lane]) lanes[lane] = [];
+      lanes[lane].push({ startMin: it.slot.startMin, endMin: it.slot.endMin, bt: it.bt, slot: it.slot });
+    }
+
+    // Render each lane as its own sub-row (stacked only when overlap is real)
+    for (let li = 0; li < lanes.length; li++) {
+      const baseRow = rowIndex + li;
+
+      // Background strip for the lane (helps reading)
+      const strip = document.createElement("div");
+      strip.className = "timelineStrip";
+      strip.style.gridRow = baseRow;
+      strip.style.gridColumn = `2 / span ${cols}`;
+      grid.appendChild(strip);
+
+      for (const node of lanes[li]) {
+        const startCol = 2 + Math.floor((node.startMin - DAY_START) / SLOT_MIN);
+        const endCol = 2 + Math.ceil((node.endMin - DAY_START) / SLOT_MIN);
+        const btEl = document.createElement("div");
+        btEl.className = `timelineBt ${classificationColorClass(node.bt)}`;
+        btEl.style.gridRow = baseRow;
+        btEl.style.gridColumn = `${startCol} / ${Math.max(startCol + 1, endCol)}`;
+
+        const title = document.createElement("div");
+        title.className = "timelineBtId";
+        title.textContent = node.bt.id;
+
+        const sub = document.createElement("div");
+        sub.className = "timelineBtSub";
+        sub.textContent = `${node.bt.categorie || ""} • ${node.slot.text || ""}`.trim();
+
+        btEl.appendChild(title);
+        btEl.appendChild(sub);
+
+        btEl.addEventListener("click", () => openBtModal(node.bt));
+
+        grid.appendChild(btEl);
+      }
+    }
+
+    rowIndex += Math.max(1, lanes.length);
+  }
+
+  host.appendChild(grid);
+}
+function renderBriefTimeline(filtered, tech) {
+  const host = $("briefTimeline");
+  if (!host) return;
+  host.innerHTML = "";
+
+  const DAY_START = 7 * 60 + 30; // 07:30
+  const DAY_END   = 17 * 60;     // 17:00
+  const TOTAL_MIN = DAY_END - DAY_START;
+
+  // Collect slots
+  const items = filtered
+    .map(bt => {
+      const s = extractTimeSlot(bt);
+      if (!s) return null;
+      const startMin = Math.max(DAY_START, Math.min(DAY_END, s.startMin));
+      const endMin   = Math.max(DAY_START, Math.min(DAY_END, s.endMin));
+      if (endMin <= startMin) return null;
+      return { bt, slot: { ...s, startMin, endMin } };
+    })
+    .filter(Boolean)
+    .sort((a,b) => a.slot.startMin - b.slot.startMin);
+
+  if (!items.length) {
+    host.innerHTML = `<div class="hint">Aucun horaire détecté pour ce technicien.</div>`;
+    return;
+  }
+
+  // Wrapper
+  const wrap = document.createElement("div");
+  wrap.className = "briefTimelineWrap";
+
+  // Hours rail
+  const rail = document.createElement("div");
+  rail.className = "briefTimelineRail";
+  wrap.appendChild(rail);
+
+  for (let h = 8; h <= 17; h++) {
+    const x = ((h*60 - DAY_START) / TOTAL_MIN) * 100;
+    const tick = document.createElement("div");
+    tick.className = "briefTick";
+    tick.style.left = `${x}%`;
+
+    const lab = document.createElement("div");
+    lab.className = "briefTickLabel";
+    lab.textContent = `${String(h).padStart(2,"0")}h`;
+    tick.appendChild(lab);
+
+    rail.appendChild(tick);
+  }
+
+  // Lane allocation
+  const lanes = [];
+  for (const it of items) {
+    let lane = 0;
+    while (lane < lanes.length) {
+      const last = lanes[lane][lanes[lane].length-1];
+      if (it.slot.startMin >= last.slot.endMin) break;
+      lane++;
+    }
+    if (!lanes[lane]) lanes[lane] = [];
+    lanes[lane].push(it);
+  }
+
+  // Lane container
+  const laneBox = document.createElement("div");
+  laneBox.className = "briefLanes";
+  wrap.appendChild(laneBox);
+
+  lanes.forEach((laneItems, li) => {
+    const laneRow = document.createElement("div");
+    laneRow.className = "briefLaneRow";
+    laneRow.style.height = "54px";
+
+    laneItems.forEach(({bt, slot}) => {
+      const left = ((slot.startMin - DAY_START) / TOTAL_MIN) * 100;
+      const width = ((slot.endMin - slot.startMin) / TOTAL_MIN) * 100;
+
+      const block = document.createElement("div");
+      block.className = `briefBlock ${classificationColorClass(bt)}`;
+      block.style.left = `${left}%`;
+      block.style.width = `${Math.max(2, width)}%`;
+
+      const t = document.createElement("div");
+      t.className = "briefBlockId";
+      t.textContent = bt.id;
+
+      const s = document.createElement("div");
+      s.className = "briefBlockSub";
+      s.textContent = slot.text || "";
+
+      block.appendChild(t);
+      block.appendChild(s);
+
+      block.addEventListener("click", () => openBtModal(bt));
+      laneRow.appendChild(block);
     });
 
-    track.appendChild(block);
-  }
+    laneBox.appendChild(laneRow);
+  });
 
-  host.appendChild(canvas);
+  host.appendChild(wrap);
 }
 
 
@@ -1582,6 +1439,7 @@ function wireEvents() {
 // Init
 // -------------------------
 async function init() {
+  setVersionBadge();
   try {
     setPdfStatus("Aucun PDF chargé");
     setProgress(0, "Prêt.");
