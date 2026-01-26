@@ -3,203 +3,209 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>DEMAT-BT — Référent & Brief</title>
+  <title>DEMAT-BT</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 
 <body>
+  <!-- ===================== TOPBAR ===================== -->
   <header class="topbar">
     <div class="brand">
       <div class="brand__title">DEMAT-BT</div>
-      <div class="brand__sub">Dématérialisation BT — Référent d'équipe</div>
+      <div class="brand__sub">Briefing équipe • Référent • Lecteur PDF</div>
     </div>
 
-    <!-- Centre: Date/heure + état -->
+    <!-- Centre: horloge / status / meta -->
     <div id="topbarClock" class="topbarClock" aria-live="polite">
       <span id="tbDot" class="tbDot tbDot--wait" title="En attente du PDF"></span>
-      <span id="tbDateTime" class="topbarClock__main">—</span>
-      <span id="tbMeta" class="topbarClock__meta">Dernière mise à jour</span>
+
+      <!-- app.js remplit ce bloc -->
+      <span id="tbDateTime" class="topbarClock__main">
+        <span class="clockIcon">🕒</span>
+        —
+      </span>
+
+      <span id="tbMeta" class="topbarClock__meta">En attente du PDF</span>
     </div>
 
+    <!-- Actions -->
     <div class="topbar__actions">
-      <label class="btn btn--secondary">
-        <span>📁</span> Importer PDF du jour
-        <input id="pdfFile" type="file" accept="application/pdf" hidden />
-      </label>
-
-      <button id="btnExtract" class="btn">
-        <span>⚡</span> Extraire
+      <!-- Import PDF -->
+      <input id="pdfInput" type="file" accept="application/pdf" hidden />
+      <button id="btnImportPdf" class="btn btn--primary" type="button">
+        Import PDF du jour
       </button>
 
-      <div class="seg">
-        <button class="seg__btn seg__btn--active" data-view="referent">Référent</button>
-        <button class="seg__btn" data-view="brief">Brief (Flip)</button>
-      </div>
+      <button id="btnExtract" class="btn btn--primary" type="button">
+        Extraire
+      </button>
 
-      <button id="btnFullscreen" class="btn btn--secondary" title="Plein écran">
-        <span>⛶</span> Plein écran
+      <button id="btnViewReferent" class="btn btn--ghost" type="button">
+        Référent
+      </button>
+
+      <button id="btnViewBrief" class="btn btn--ghost" type="button">
+        Brief
+      </button>
+
+      <button id="btnFullscreen" class="btn btn--ghost" type="button">
+        Plein écran
       </button>
     </div>
   </header>
 
-  <main class="layout">
-    <!-- Left: sidebar -->
-    <aside class="sidebar card">
-      <div class="card__title">Contrôle</div>
+  <!-- ===================== LAYOUT ===================== -->
+  <div class="layout">
+    <!-- ========== SIDEBAR / DASHBOARD LEFT ========== -->
+    <aside class="sidebar">
+      <div class="card">
+        <div class="card__title">Tableau de bord</div>
 
-      <div class="field">
-        <div class="label">Zones</div>
-        <div id="zonesStatus" class="hint">Chargement…</div>
-      </div>
+        <div style="padding:0 16px 16px 16px;">
+          <!-- Zone -->
+          <div class="kpis" style="margin-bottom:10px;">
+            <div class="kpi">
+              <b>Zone</b>
+              <span id="sbZoneValue">—</span>
+            </div>
+          </div>
 
-      <div class="field">
-        <div class="label">PDF</div>
-        <div id="pdfStatus" class="hint">Aucun PDF chargé</div>
-      </div>
+          <!-- PDF -->
+          <div class="field">
+            <div class="label">PDF chargé</div>
+            <div class="hint" id="sbPdfName">Aucun PDF chargé</div>
+          </div>
 
-      <div class="field">
-        <div class="label">Progression</div>
-        <div id="progMsg" class="hint">Prêt.</div>
-        <div class="progress"><div id="progBar"></div></div>
-      </div>
+          <!-- Progress -->
+          <div class="field">
+            <div class="label">Progression</div>
+            <div class="progressBar" aria-label="Progression">
+              <div id="sbProgressFill" style="width:0%;"></div>
+            </div>
+            <div class="hint" style="margin-top:8px;" id="sbProgressText">Prêt.</div>
+          </div>
 
-      <div class="divider"></div>
+          <div class="divider"></div>
 
-      <div class="field">
-        <div class="label">Filtre</div>
-        <input id="searchInput" class="input" placeholder="Rechercher (BT, client, adresse, objet…)" />
-      </div>
+          <!-- Compteurs -->
+          <div class="kpis">
+            <div class="kpi">
+              <b>BT</b>
+              <span id="sbBtCount">0</span>
+            </div>
+            <div class="kpi">
+              <b>Pages</b>
+              <span id="sbPageCount">0</span>
+            </div>
+          </div>
 
-      <div class="field">
-        <div class="label">Type de docs</div>
-        <div class="chips" id="typeChips">
-          <!-- injected -->
+          <!-- (optionnel) debug -->
+          <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
+            <button id="btnReset" class="btn btn--ghost" type="button">Reset</button>
+            <span class="hint" style="align-self:center;">v<span id="appVersion">—</span></span>
+          </div>
         </div>
       </div>
 
-      <div class="divider"></div>
+      <!-- Zone filtres / sélection technicien (existant ou futur) -->
+      <div class="card" style="margin-top:12px;">
+        <div class="card__title">Sélection</div>
+        <div style="padding:0 16px 16px 16px;">
+          <div class="field">
+            <label class="label" for="techSelect">Technicien</label>
+            <select id="techSelect" class="select">
+              <option value="">—</option>
+            </select>
+            <div class="hint">La liste est remplie après extraction (ou via ton data source).</div>
+          </div>
 
-      <div class="field">
-        <div class="label">Technicien</div>
-        <select id="techSelect" class="select">
-          <option value="">— Tous —</option>
-        </select>
-        <div class="hint">Pour le Brief, sélectionne un technicien → ses BT s'affichent.</div>
-      </div>
-
-      <div class="divider"></div>
-
-      <div class="hint">
-        Règle : <b>toute page après un BT</b> est rattachée à ce BT <b>jusqu'au BT suivant</b>.
+          <div class="field">
+            <label class="label" for="searchInput">Recherche BT</label>
+            <input id="searchInput" class="input" placeholder="Ex: 123456 / adresse / client..." />
+          </div>
+        </div>
       </div>
     </aside>
 
-    <!-- Right: content -->
-    <section class="content">
-      <!-- Référent view -->
-      <section id="viewReferent" class="view view--active">
-        <div class="row row--space">
-          <div>
-            <h2 class="h2">Référent d'équipe</h2>
-            <div class="sub">Tous les BT détectés + documents associés (AT, procédure, plan, photo, doc…)</div>
-          </div>
-
-          <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-            <div class="kpis" id="kpis"></div>
-
-            <div class="seg">
-              <button class="seg__btn seg__btn--active" data-layout="grid">
-                <span>◼</span> Vignettes
-              </button>
-              <button class="seg__btn" data-layout="timeline">
-                <span>◐</span> Timeline
-              </button>
-            </div>
-          </div>
+    <!-- ========== MAIN CONTENT ========== -->
+    <main class="content">
+      <!-- Header section -->
+      <div class="row row--space">
+        <div>
+          <h1 class="h2" id="viewTitle">Référent</h1>
+          <div class="sub" id="viewSubtitle">Vue planning / vignettes</div>
         </div>
-
-        <div id="btGrid" class="grid"></div>
-        <div id="btTimeline" class="timeline" style="display:none;">
-          <div style="padding:12px 16px; background:#fbfcfe; border-bottom:1.5px solid var(--line); display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
-            <span style="font-size:12px; font-weight:700; color:var(--txt-light);">Catégories d'intervention :</span>
-            <div style="display:flex; gap:12px; flex-wrap:wrap; font-size:11px; font-weight:600;">
-              <span style="display:flex; align-items:center; gap:6px; color:var(--txt-light);">
-                <span style="width:20px; height:3px; background:#2563eb; border-radius:2px;"></span> CLIENTÈLE
-              </span>
-              <span style="display:flex; align-items:center; gap:6px; color:var(--txt-light);">
-                <span style="width:20px; height:3px; background:#10b981; border-radius:2px;"></span> MAINTENANCE
-              </span>
-              <span style="display:flex; align-items:center; gap:6px; color:var(--txt-light);">
-                <span style="width:20px; height:3px; background:#f59e0b; border-radius:2px;"></span> SURVEILLANCE
-              </span>
-              <span style="display:flex; align-items:center; gap:6px; color:var(--txt-light);">
-                <span style="width:20px; height:3px; background:#a855f7; border-radius:2px;"></span> ADMINISTRATIF
-              </span>
-              <span style="display:flex; align-items:center; gap:6px; color:var(--txt-light);">
-                <span style="width:20px; height:3px; background:#64748b; border-radius:2px;"></span> AUTRE
-              </span>
-            </div>
-            <span style="font-size:11px; color:var(--muted); margin-left:auto;">Cliquez sur un BT pour voir les détails</span>
-          </div>
-        </div>
-      </section>
-
-      <!-- Brief view -->
-      <section id="viewBrief" class="view">
-        <div class="briefHeader">
-          <div>
-            <h2 class="h2">Brief équipe (Samsung Flip)</h2>
-            <div class="sub">Sélectionne un technicien → ses BT + docs s'affichent instantanément.</div>
-          </div>
-          <div class="briefMeta" id="briefMeta"></div>
-        </div>
-
-        <div id="briefList" class="briefList"></div>
-      </section>
-
-      <!-- Viewer modal -->
-      <div id="modal" class="modal" aria-hidden="true">
-        <div class="modal__backdrop" data-close="1"></div>
-        <div class="modal__panel card">
-          <div class="modal__top">
-            <div>
-              <div id="modalTitle" class="modal__title">Aperçu</div>
-              <div id="modalSubtitle" class="modal__sub"></div>
-            </div>
-
-            <div class="modal__actions">
-              <button id="btnPrevPage" class="btn btn--secondary">
-                <span>←</span> Page -
-              </button>
-              <button id="btnNextPage" class="btn btn--secondary">
-                Page + <span>→</span>
-              </button>
-              <button id="btnExportBt" class="btn">
-                <span>💾</span> Exporter BT (PDF)
-              </button>
-              <button class="btn btn--secondary" data-close="1">Fermer</button>
-            </div>
-          </div>
-
-          <div class="modal__body">
-            <canvas id="canvas"></canvas>
-          </div>
-
-          <div class="modal__footer">
-            <div id="modalInfo" class="hint"></div>
-          </div>
+        <div class="chips" id="filters">
+          <div class="chip chip--active" data-filter="ALL">Tous</div>
+          <div class="chip" data-filter="MHS_MES">MHS / MES</div>
+          <div class="chip" data-filter="MAINT">Maintenance</div>
+          <div class="chip" data-filter="SURV">Surveillance</div>
+          <div class="chip" data-filter="AUTRE">Autre</div>
         </div>
       </div>
-    </section>
-  </main>
 
-  <!-- pdf-lib (export PDF BT) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+      <!-- Toggle view mode (timeline / vignettes) -->
+      <div class="row" style="margin-top:12px;">
+        <div class="seg">
+          <button id="btnModeTimeline" class="segBtn segBtn--active" type="button">Timeline</button>
+          <button id="btnModeGrid" class="segBtn" type="button">Vignettes</button>
+        </div>
+      </div>
 
-  <!-- data -->
-  <script src="./data/technicians.js"></script>
+      <!-- ========== REFERENT VIEW ========== -->
+      <section id="viewReferent" class="view view--active">
+        <!-- TIMELINE (dark, lisible) -->
+        <div id="timelineWrap" class="timelineWrap" style="margin-top:14px;">
+          <!-- Si ton code existant génère une table timeline, garde les classes:
+               .timelineTable .timelineHead .timelineRow .timelineCell etc. -->
+          <div class="timeline-empty" id="timelineEmpty">
+            Aucune donnée pour l’instant. Importe un PDF puis lance l’extraction.
+          </div>
 
-  <!-- app -->
+          <!-- Exemple de structure (optionnelle) -->
+          <table class="timelineTable" id="timelineTable" style="display:none;">
+            <thead class="timelineHead">
+              <tr>
+                <th class="timelineCorner">Technicien</th>
+                <th>07:00</th><th>08:00</th><th>09:00</th><th>10:00</th><th>11:00</th>
+                <th>12:00</th><th>13:00</th><th>14:00</th><th>15:00</th><th>16:00</th>
+                <th>17:00</th><th>18:00</th>
+              </tr>
+            </thead>
+            <tbody id="timelineBody"></tbody>
+          </table>
+        </div>
+
+        <!-- GRID (vignettes) -->
+        <div id="gridWrap" style="display:none;">
+          <div class="grid" id="btGrid"></div>
+        </div>
+      </section>
+
+      <!-- ========== BRIEF VIEW ========== -->
+      <section id="viewBrief" class="view">
+        <div class="briefHeader" style="margin-top:14px;">
+          <div>
+            <div class="briefMeta" id="briefMeta">Briefing équipe</div>
+            <div class="sub" id="briefSub">Sélectionne un technicien pour afficher ses BT.</div>
+          </div>
+        </div>
+
+        <div class="briefList" id="briefList">
+          <div class="timeline-empty">Aucun BT à afficher pour l’instant.</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ===================== SCRIPTS ===================== -->
   <script src="./app.js"></script>
+
+  <!-- NOTE:
+       Tes handlers d’import/extraction (si tu as déjà du code) peuvent appeler:
+       window.DEMAT_UI.setPdfInfo({ name, totalPages })
+       window.DEMAT_UI.setExtractionResult({ btCount, totalPages, progressRatio })
+       window.DEMAT_UI.setError("message")
+  -->
 </body>
 </html>
