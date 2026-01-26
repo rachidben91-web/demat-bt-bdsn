@@ -628,7 +628,11 @@ function renderGrid(filtered, grid) {
 
     const card = document.createElement("div");
     card.className = "card btCard";
-    
+
+     // Accent couleur BT (même couleur que la pastille)
+    card.classList.add("btCard--accent");
+    card.style.setProperty("--bt-accent", classification.color);
+     
     // Top section avec ID et badges
     const topDiv = document.createElement("div");
     topDiv.className = "btTop";
