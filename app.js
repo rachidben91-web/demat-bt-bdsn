@@ -1,9 +1,9 @@
 // app.js
 // DEMAT-BT — Extracteur (GitHub Pages, sans serveur)
 // - Détection BT par en-tête "BON DE TRAVAIL" + BT\d{11}
-// - Association pages: tout ce qui suit un BT jusqu'au suivant
-// - Extraction champs par zones.json (bbox en points)
-// - Équipe: UNIQUEMENT via zone REALISATION (NNI + nom) + mapping sur TECHNICIANS
+// - Association pages: tout ce qui suit un BT est rattaché à ce BT jusqu'au suivant
+// - Extraction champs via zones.json (bbox en points)
+// - Equipe: UNIQUEMENT via zone REALISATION (NNI + nom) + mapping TECHNICIANS
 // - Filtre technicien: uniquement ceux qui ont des BT + compteur
 
 const PDF_JS_CDN = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
@@ -23,14 +23,11 @@ const state = {
   countsByTechId: new Map(),
   filters: {
     q: "",
-    types: new Set(),         // si vide -> pas de filtre type
-    techId: ""                // "" = tous
-  }
+    types: new Set(),
+    techId: "", // "" = tous
+  },
 };
 
-// -----------------------------
-// Helpers DOM
-// -----------------------------
 const $ = (id) => document.getElementById(id);
 
 function setStatus(msg) {
@@ -38,39 +35,26 @@ function setStatus(msg) {
   if (el) el.textContent = msg || "";
 }
 
+function setZonesStatus(msg) {
+  const el = $("zonesStatus");
+  if (el) el.textContent = msg || "";
+}
+
+function setPdfStatus(msg) {
+  const el = $("pdfStatus");
+  if (el) el.textContent = msg || "";
+}
+
 function setProgress(pct) {
   const el = $("progress");
-  if (!el) return;
-  el.style.width = `${Math.max(0, Math.min(100, pct || 0))}%`;
+  if (el) el.style.width = `${Math.max(0, Math.min(100, pct || 0))}%`;
+  const txt = $("progressText");
+  if (txt) txt.textContent = pct != null ? `${pct}%` : "";
 }
 
-function esc(s) {
-  return String(s || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
-function norm(s) {
-  return String(s || "").replace(/\s+/g, " ").trim();
-}
-
-function uniqBy(arr, keyFn) {
-  const seen = new Set();
-  const out = [];
-  for (const it of arr || []) {
-    const k = keyFn(it);
-    if (!k || seen.has(k)) continue;
-    seen.add(k);
-    out.push(it);
-  }
-  return out;
-}
-
-// -----------------------------
-// pdf.js loader
-// -----------------------------
+// ------------------------------
+// PDF.js loader
+// ------------------------------
 async function loadPdfJs() {
   if (pdfJsLoaded) return;
   await new Promise((resolve, reject) => {
@@ -87,223 +71,194 @@ async function loadPdfJs() {
   });
 }
 
-// -----------------------------
-// Zones loader
-// -----------------------------
+// ------------------------------
+// zones.json loader (GitHub Pages safe)
+// ------------------------------
 async function loadZones() {
-  try {
-    if (ZONES) return ZONES;
+  if (ZONES) return ZONES;
+  setZonesStatus("Chargement…");
 
-    setStatus("Chargement des zones…");
+  const url = new URL("./zones.json", window.location.href);
+  url.searchParams.set("v", String(Date.now())); // cache-bust
 
-    const url = `./zones.json?v=${Date.now()}`;
-    const res = await fetch(url, { cache: "no-store" });
-
-    if (!res.ok) {
-      throw new Error(`zones.json introuvable (HTTP ${res.status}) — URL: ${url}`);
-    }
-
-    ZONES = await res.json();
-
-    // Mini check : le JSON doit contenir pages.BT
-    if (!ZONES?.pages?.BT) {
-      throw new Error("zones.json chargé mais format inattendu (attendu: pages.BT...)");
-    }
-
-    setStatus("Zones chargées ✔️");
-    return ZONES;
-  } catch (err) {
-    console.error("Erreur loadZones():", err);
-    setStatus("Erreur zones: " + (err?.message || err));
-    throw err;
+  const res = await fetch(url.toString(), { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`zones.json introuvable (${res.status}). Vérifie le nom et l'emplacement.`);
   }
+  ZONES = await res.json();
+  setZonesStatus("OK");
+  return ZONES;
 }
 
 function getZoneBBox(label) {
-  // On attend un format avec zones: [{label, bbox:{x0,y0,x1,y1}}...]
-  // ou un format template/pages… -> fallback simple
   if (!ZONES) return null;
-  if (Array.isArray(ZONES.zones)) {
-    const z = ZONES.zones.find(x => (x.label || "").toUpperCase() === label.toUpperCase());
+  const L = String(label || "").toUpperCase();
+
+  // format attendu : pages.BT.LABEL.bbox
+  if (ZONES?.pages?.BT?.[L]?.bbox) return ZONES.pages.BT[L].bbox;
+
+  // autre format (ancien) : zones: [{label,bbox}]
+  if (Array.isArray(ZONES?.zones)) {
+    const z = ZONES.zones.find((x) => String(x.label || "").toUpperCase() === L);
     return z?.bbox || null;
   }
-  // format alternatif (template/pages)
-  try {
-    const bb = ZONES.pages?.BT?.[label]?.bbox;
-    return bb || null;
-  } catch {
-    return null;
+
+  return null;
+}
+
+// ------------------------------
+// Utils texte
+// ------------------------------
+function norm(s) {
+  return (s || "").replace(/\s+/g, " ").trim();
+}
+
+function extractDateFromFilename(filename) {
+  const match = String(filename || "").match(/(\d{4})(\d{2})(\d{2})_\d{4}\.pdf$/);
+  if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+  return "";
+}
+
+// ------------------------------
+// Extraction texte dans une bbox (coordonnées PDF points)
+// pdf.js item.transform => [a,b,c,d,e,f] avec e=x, f=y (origine en bas à gauche)
+// bbox: {x0,y0,x1,y1}
+// ------------------------------
+function itemXY(item) {
+  const t = item.transform;
+  return { x: t?.[4] ?? 0, y: t?.[5] ?? 0 };
+}
+
+function textInBBox(textContent, bbox, padding = 1.5) {
+  if (!textContent || !bbox) return "";
+  const x0 = Math.min(bbox.x0, bbox.x1) - padding;
+  const x1 = Math.max(bbox.x0, bbox.x1) + padding;
+  const y0 = Math.min(bbox.y0, bbox.y1) - padding;
+  const y1 = Math.max(bbox.y0, bbox.y1) + padding;
+
+  const hits = [];
+  for (const it of textContent.items || []) {
+    const str = it.str || "";
+    if (!str.trim()) continue;
+
+    const { x, y } = itemXY(it);
+
+    // Filtre simple par point d'ancrage
+    if (x >= x0 && x <= x1 && y >= y0 && y <= y1) {
+      hits.push({ x, y, str });
+    }
   }
+
+  // tri pour reconstituer une lecture (haut->bas, gauche->droite)
+  hits.sort((a, b) => (b.y - a.y) || (a.x - b.x));
+  return norm(hits.map((h) => h.str).join(" "));
 }
 
-// -----------------------------
-// Page text extraction with bbox (pt, origin bottom-left)
-// -----------------------------
-async function getPageItems(pdf, pageNum) {
-  const page = await pdf.getPage(pageNum);
-  const textContent = await page.getTextContent();
-  // items: {str, transform[4]=x, transform[5]=y}
-  const items = textContent.items.map(it => ({
-    str: it.str,
-    x: it.transform[4],
-    y: it.transform[5]
-  }));
-  return { page, items };
-}
-
-function textInBBox(items, bbox) {
-  if (!bbox) return "";
-  const x0 = bbox.x0, x1 = bbox.x1, y0 = bbox.y0, y1 = bbox.y1;
-
-  const inside = items.filter(it =>
-    it.x >= x0 && it.x <= x1 && it.y >= y0 && it.y <= y1 && it.str && it.str.trim()
-  );
-
-  // Reconstituer “à peu près” l’ordre: y desc (haut -> bas), x asc (gauche -> droite)
-  inside.sort((a, b) => {
-    const dy = b.y - a.y;
-    if (Math.abs(dy) > 1.5) return dy;
-    return a.x - b.x;
-  });
-
-  return norm(inside.map(it => it.str).join(" "));
+function parseBtId(text) {
+  const m = String(text || "").match(/\bBT\d{11}\b/);
+  return m ? m[0] : "";
 }
 
 function classifyPage(fullText, isBtPage) {
-  const up = (fullText || "").toUpperCase();
+  const up = String(fullText || "").toUpperCase();
   if (isBtPage) return "BT";
-  if (up.includes("FICHE AT") || up.includes("AT N°") || up.includes("AT N")) return "AT";
-  if (up.includes("PROCÉDURE D'EXÉCUTION") || up.includes("PROCEDURE D'EXECUTION")) return "PROC";
+  if (up.includes("FICHE AT") || up.includes("AUTORISATION DE TRAVAIL") || up.includes("AT N°") || up.includes("AT N")) return "AT";
+  if (up.includes("PROCÉDURE D'EXÉCUTION") || up.includes("PROCEDURE D'EXECUTION") || up.includes("PROCÉDURE D'EXECUTION")) return "PROC";
   if (up.includes("ECHELLE") && up.includes("1/200")) return "PLAN";
   if (up.includes("GOOGLE") && up.includes("STREET")) return "STREET";
+
   const compact = up.replace(/\s+/g, "");
   if (compact.length < 140) return "PHOTO";
   return "DOC";
 }
 
-// -----------------------------
-// REALISATION parsing (robuste)
-// -----------------------------
+// ------------------------------
+// TEAM depuis REALISATION (NNI + NOM)
+// ------------------------------
 function parseTeamFromRealisation(text) {
-  const t = (text || "")
-    .replace(/\u00A0/g, " ")
-    .replace(/[|•]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  // NNI = 1 lettre + 5 chiffres (ex: A94073)
+  // Nom = souvent NOM PRENOM ou nom prénom (on récupère proprement)
+  const t = norm(text);
 
-  // Arrêts: dates/heures/libellés de tableau
-  const STOP = /^(?:\d{2}\/\d{2}\/\d{4}|\d{1,2}h\d{2}|\d{1,2}:\d{2}|de|à|a|mo|horaire|temps|dont|heures|sup|indemnités)$/i;
+  // Ex: "I13252 CISSE MOUSSA" ou "E50275 bentoumi mounir"
+  const re = /([A-Z]\d{5})\s+([A-Za-zÀ-ÿ'\- ]{3,60})/g;
 
   const out = [];
-  const reNni = /([A-Z]\d{5})/g;
-
   let m;
-  while ((m = reNni.exec(t)) !== null) {
-    const nni = m[1];
-    const tail = t.slice(m.index + nni.length).trim();
-    const tokens = tail.split(" ").filter(Boolean);
+  while ((m = re.exec(t)) !== null) {
+    const nni = (m[1] || "").toUpperCase();
+    let name = norm(m[2] || "");
 
-    const nameParts = [];
-    for (let i = 0; i < tokens.length && nameParts.length < 6; i++) {
-      const tok = tokens[i];
-      if (STOP.test(tok)) break;
-      const cleanTok = tok.replace(/[,\.;:]/g, "");
-      if (/^NNI$/i.test(cleanTok)) continue;
-      nameParts.push(cleanTok);
-    }
+    // coupe si derrière on tombe sur une date ou heure qui s'est collée
+    name = name.replace(/\b\d{2}\/\d{2}\/\d{4}\b.*$/i, "").trim();
+    name = name.replace(/\b\d{1,2}h\d{2}\b.*$/i, "").trim();
 
-    const name = norm(nameParts.join(" "));
-    if (name && name.length >= 3 && !out.some(x => x.nni === nni)) {
-      out.push({ nni, name });
-    }
+    if (!nni || name.length < 3) continue;
+    if (!out.some((x) => x.nni === nni)) out.push({ nni, rawName: name });
   }
-
   return out;
 }
 
-function mapTech(teamItem) {
+function mapTechByNni(nni) {
   const techs = window.TECHNICIANS || [];
-  const nniA = String(teamItem?.nni || "").replace(/\s+/g, "").toUpperCase();
-  if (nniA) {
-    const byNni = techs.find(t => String(t.nni || "").replace(/\s+/g, "").toUpperCase() === nniA);
-    if (byNni) return byNni;
+  const N = String(nni || "").toUpperCase();
+  return techs.find((t) => String(t.nni || t.id || "").toUpperCase() === N) || null;
+}
+
+// ------------------------------
+// Extraction champs BT depuis zones
+// ------------------------------
+function extractFieldsFromZones(textContent) {
+  const fields = {};
+
+  const wanted = [
+    "OBJET",
+    "DATE_PREVUE",
+    "CLIENT_NOM",
+    "REFERENCE_PDL",
+    "DUREE",
+    "LOCALISATION",
+    "CONTACT_CLIENT",
+    "BT_NUM",
+    "AT_NUM",
+    "REALISATION",
+    "DESIGNATION",
+    "OBSERVATIONS",
+    "COMMENTAIRES_CLIENT",
+    "EOTP_OU_CCA",
+  ];
+
+  for (const k of wanted) {
+    const bb = getZoneBBox(k);
+    if (!bb) continue;
+    fields[k] = textInBBox(textContent, bb);
   }
 
-  // Fallback (rare): lastname match
-  const last = String(teamItem?.name || "").trim().split(/\s+/)[0]?.toUpperCase();
-  if (!last) return null;
-  return techs.find(t => String(t.name || "").toUpperCase().startsWith(last + " ")) || null;
+  return fields;
 }
 
-// -----------------------------
-// Field extraction from BT page using zones.json
-// -----------------------------
-function extractBtFieldsFromZones(items) {
-  // Zones “core”
-  const objet = textInBBox(items, getZoneBBox("OBJET"));
-  const datePrevu = textInBBox(items, getZoneBBox("DATE_PREVU"));
-  const clientNom = textInBBox(items, getZoneBBox("CLIENT_NOM"));
-  const refPdl = textInBBox(items, getZoneBBox("REFERENCE_PDL"));
-  const duree = textInBBox(items, getZoneBBox("DUREE"));
-  const localisation = textInBBox(items, getZoneBBox("LOCALISATION"));
-  const contact = textInBBox(items, getZoneBBox("CONTACT_CLIENT"));
-  const btNum = textInBBox(items, getZoneBBox("BT_NUM"));
-  const observation = textInBBox(items, getZoneBBox("OBSERVATION"));
-  const designation = textInBBox(items, getZoneBBox("DESIGNATION"));
-  const realisation = textInBBox(items, getZoneBBox("REALISATION"));
+function parseAtNumber(fields, fullText) {
+  // d'abord via zone AT_NUM
+  const z = norm(fields?.AT_NUM || "");
+  // souvent "AT N°  PR06" ou "PR06"
+  let m = z.match(/\b([A-Z]{1,3}\d{1,6})\b/i);
+  if (m) return m[1].toUpperCase();
 
-  return {
-    objet, datePrevu, clientNom, refPdl, duree, localisation, contact,
-    btNum, observation, designation, realisation
-  };
-}
-
-function detectTypeFromObjet(objet) {
-  const text = (objet || "").toLowerCase();
-
-  if (text.includes("mise hors service") || text.includes("mhs") || text.includes("depose compteur") || text.includes("dépose compteur")) return "mhs";
-  if (text.includes("mise en service") || text.includes("remise en service") || text.includes("pose module") || text.includes("chgt compteur") || text.includes("changement compteur")) return "mes";
-  if (text.includes("adf") || text.includes("fuite") || text.includes("surveillance") || text.includes("localisation") || text.includes("rsf")) return "adf";
-  if (text.includes("maintenance") || text.includes("cicm") || text.includes("ci-cm") || text.includes("préventive") || text.includes("preventive") || text.includes("visite")) return "maintenance";
-  if (text.includes("formation") || text.includes("maintien") || text.includes("compétence") || text.includes("competence") || text.includes("habilitation") || text.includes("soudage")) return "formation";
-  if (text.includes("administratif") || text.includes("réunion") || text.includes("reunion")) return "administratif";
-  return "maintenance";
-}
-
-function getTypeLabel(type) {
-  return {
-    mhs: "MHS",
-    mes: "MES",
-    adf: "ADF",
-    maintenance: "MAINTENANCE",
-    formation: "FORMATION",
-    administratif: "ADMIN"
-  }[type] || "AUTRE";
-}
-
-function extractBtIdFallback(fullText, zoneBtNum) {
-  const z = String(zoneBtNum || "");
-  const m1 = z.match(/BT\d{11}/i);
-  if (m1) return m1[0].toUpperCase();
-  const m2 = String(fullText || "").match(/BT\d{11}/i);
-  if (m2) return m2[0].toUpperCase();
-  return "";
-}
-
-function extractAtNumberFromText(fullText) {
+  // fallback global
   const t = String(fullText || "");
-  // souvent PRO6 / PRO12...
-  const m1 = t.match(/\bPRO\d{1,3}\b/i);
-  if (m1) return m1[0].toUpperCase();
-  // parfois "AT N° XXXX"
-  const m2 = t.match(/AT\s*N[°o]?\s*([A-Z0-9\-]{2,})/i);
-  if (m2) return String(m2[1]).toUpperCase();
+  m = t.match(/\bAT\s*(?:N[°\s]*|N\s*)\s*([A-Z]{1,3}\d{1,6})\b/i);
+  if (m) return m[1].toUpperCase();
+
+  // autre fallback : "PR06" seul parfois
+  m = t.match(/\bPR\d{2,6}\b/i);
+  if (m) return m[0].toUpperCase();
+
   return "";
 }
 
-// -----------------------------
-// Main extraction
-// -----------------------------
+// ------------------------------
+// Core: extraction BT + pièces jointes
+// ------------------------------
 async function extractFromPdf(file) {
   await loadPdfJs();
   await loadZones();
@@ -320,149 +275,164 @@ async function extractFromPdf(file) {
   state.totalPages = pdf.numPages;
   state.bts = [];
 
-  const total = pdf.numPages;
+  setPdfStatus(`OK. ${file.name}`);
+  setStatus("Analyse des pages…");
+  setProgress(10);
 
+  const fileDate = extractDateFromFilename(file.name);
+
+  const bts = [];
   let current = null;
 
-  function finalize(endPage) {
+  function finalizeCurrent(endPage) {
     if (!current) return;
-
     current.endPage = endPage;
-    current.sourcePages = current.pages.map(p => p.page);
-    current.hasAT = current.pages.some(p => p.type === "AT");
-    current.atPages = current.pages.filter(p => p.type === "AT").map(p => p.page);
 
-    // AT number: essayer de le trouver sur les pages AT
-    current.atNumber = current.atNumber || "";
-    if (!current.atNumber && current.atPages.length) {
-      // on prendra le premier match dans les pages AT
-      current.atNumber = current.atNumber || "";
-    }
+    // docs meta
+    const labelMap = { BT: "BT", AT: "AT", PROC: "Procédure", PLAN: "Plan", PHOTO: "Photo", STREET: "Street", DOC: "Doc" };
 
-    // documents meta
-    const labelMap = { BT:"BT", AT:"AT", PROC:"Procédure", PLAN:"Plan", PHOTO:"Photo", STREET:"Street", DOC:"Doc" };
+    current.sourcePages = current.pages.map((p) => p.page);
     current.documentsMeta = current.pages.map((p, i) => ({
       key: `P${i + 1}`,
       page: p.page,
       type: p.type,
-      label: labelMap[p.type] || "Doc"
+      label: labelMap[p.type] || "Doc",
     }));
-    current.documents = current.documentsMeta.map(d => `${d.key} • ${d.label}`);
+    current.documents = current.documentsMeta.map((d) => `${d.key} • ${d.label}`);
 
-    // sécurité: dedupe team
-    current.team = uniqBy(current.team, x => x.id || x.nni || x.name);
+    current.hasAT = current.pages.some((p) => p.type === "AT") || !!current.atNumber;
+    current.atPages = current.pages.filter((p) => p.type === "AT").map((p) => p.page);
 
-    state.bts.push(current);
+    bts.push(current);
     current = null;
   }
 
-  for (let pageNum = 1; pageNum <= total; pageNum++) {
-    setStatus(`Lecture page ${pageNum}/${total}…`);
-    setProgress(5 + Math.round((pageNum / total) * 80));
+  const reBt = /\bBT\d{11}\b/g;
 
-    const { items } = await getPageItems(pdf, pageNum);
-    const fullText = norm(items.map(it => it.str).join(" "));
+  for (let pageNum = 1; pageNum <= state.totalPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const textContent = await page.getTextContent();
+    const strings = (textContent.items || []).map((it) => it.str || "");
+    const fullText = strings.join("\n");
 
-    const hasBtId = /BT\d{11}/i.test(fullText);
+    const hasBtId = reBt.test(fullText);
+    reBt.lastIndex = 0;
     const isBtHeader = /BON\s+DE\s+TRAVAIL/i.test(fullText) && hasBtId;
 
     if (isBtHeader) {
-      // clôturer l'ancien BT
-      finalize(pageNum - 1);
+      finalizeCurrent(pageNum - 1);
 
-      // extraire champs
-      const fields = extractBtFieldsFromZones(items);
-      const btId = extractBtIdFallback(fullText, fields.btNum);
+      const btId = parseBtId(fullText) || ([...fullText.matchAll(/\bBT\d{11}\b/g)][0]?.[0] || "");
 
-      const objet = fields.objet || "";
-      const type = detectTypeFromObjet(objet);
+      const fields = extractFieldsFromZones(textContent);
 
-      // équipe via REALISATION UNIQUEMENT
-      const teamRaw = parseTeamFromRealisation(fields.realisation || "");
-      const mapped = teamRaw
-        .map(tr => {
-          const tech = mapTech(tr);
-          if (!tech) {
-            // si non reconnu, on garde quand même (mais sans id)
-            return { id: "", nni: tr.nni, name: norm(tr.name), color: "#64748b" };
-          }
-          return { id: tech.id, nni: tech.nni, name: tech.name, color: tech.color };
+      const objet = norm(fields.OBJET || "");
+      const client = norm(fields.CLIENT_NOM || "");
+      const adresse = norm(fields.LOCALISATION || "");
+      const datePrevue = norm(fields.DATE_PREVUE || "") || fileDate;
+      const duree = norm(fields.DUREE || "");
+      const pdl = norm(fields.REFERENCE_PDL || "");
+      const contact = norm(fields.CONTACT_CLIENT || "");
+      const btNum = norm(fields.BT_NUM || btId);
+
+      // TEAM: via REALISATION
+      const realTxt = fields.REALISATION || "";
+      const teamRaw = parseTeamFromRealisation(realTxt);
+      const team = teamRaw
+        .map((t) => {
+          const tech = mapTechByNni(t.nni);
+          return {
+            nni: t.nni,
+            name: tech?.name || t.rawName,
+            techId: tech?.id || tech?.nni || t.nni,
+            manager: tech?.manager || "",
+            site: tech?.site || "",
+          };
         });
 
+      const atNumber = parseAtNumber(fields, fullText);
+
       current = {
-        id: btId || "BT_INCONNU",
-        type,
-        typeLabel: getTypeLabel(type),
-        title: objet ? objet : "Bon de travail",
-        datePrevu: fields.datePrevu || "",
-        duration: fields.duree || "",
-        client: fields.clientNom || "",
-        address: fields.localisation || "",
-        pdl: fields.refPdl || "",
-        phone: fields.contact || "",
-        observation: fields.observation || "",
-        designationText: fields.designation || "",
-        team: uniqBy(mapped, x => x.nni || x.name),
-        pages: [],
+        id: btId || btNum,
+        title: objet || "Bon de travail",
+        client,
+        address: adresse,
+        pdl,
+        scheduledDate: datePrevue,
+        duration: duree,
+        phone: contact,
+        btNum: btNum || btId,
+        atNumber: atNumber || "",
+        status: "pending",
+        assignedTo: team.map((x) => x.techId).filter(Boolean),
+        team,
+        designationRaw: norm(fields.DESIGNATION || ""),
+        comments: norm(fields.OBSERVATIONS || ""),
+        clientComments: norm(fields.COMMENTAIRES_CLIENT || ""),
+        eotp: norm(fields.EOTP_OU_CCA || ""),
         startPage: pageNum,
         endPage: pageNum,
-        hasAT: false,
-        atPages: [],
-        atNumber: ""  // rempli plus bas si trouvé
+        pages: [],
       };
     }
 
     if (current) {
-      const pType = classifyPage(fullText, pageNum === current.startPage);
-      current.pages.push({ page: pageNum, type: pType });
+      const type = classifyPage(fullText, pageNum === current.startPage);
+      current.pages.push({ page: pageNum, type });
 
-      // AT number: si on est sur une page AT, essayer d'extraire
-      if (pType === "AT") {
-        const atNum = extractAtNumberFromText(fullText);
-        if (atNum) current.atNumber = current.atNumber || atNum;
+      // si on tombe sur une page AT après, on essaye d’attraper un numéro AT
+      if (!current.atNumber) {
+        const tmpAt = parseAtNumber({}, fullText);
+        if (tmpAt) current.atNumber = tmpAt;
       }
+    }
+
+    if (pageNum % 5 === 0) {
+      const pct = 10 + Math.round((pageNum / state.totalPages) * 80);
+      setStatus(`Analyse page ${pageNum}/${state.totalPages}…`);
+      setProgress(pct);
     }
   }
 
-  finalize(total);
+  finalizeCurrent(state.totalPages);
 
-  // Comptages
+  state.bts = bts;
   computeCounts();
-  buildTechSelectWithCounts();
-  buildTypeChips();
-
-  setStatus(`Terminé. ${state.bts.length} BT détectés.`);
+  setStatus(`Terminé. ${bts.length} BT détecté(s).`);
   setProgress(100);
 
   renderAll();
 }
 
+// ------------------------------
+// Counts + filtre techniciens
+// ------------------------------
 function computeCounts() {
-  const map = new Map();
+  state.countsByTechId = new Map();
   for (const bt of state.bts) {
     for (const m of bt.team || []) {
-      const id = m.id || m.nni || "";
+      const id = m.techId || m.nni;
       if (!id) continue;
-      map.set(id, (map.get(id) || 0) + 1);
+      state.countsByTechId.set(id, (state.countsByTechId.get(id) || 0) + 1);
     }
   }
-  state.countsByTechId = map;
 }
 
-// -----------------------------
-// UI: tech select with counts (ONLY techs with BT)
-// -----------------------------
 function buildTechSelectWithCounts() {
   const sel = $("techSelect");
   if (!sel) return;
 
+  // options uniquement techniciens qui ont un BT
   const techs = window.TECHNICIANS || [];
-  const counts = state.countsByTechId || new Map();
+  const items = [];
 
-  const techsWithBt = techs
-    .map(t => ({ t, c: counts.get(t.id) || 0 }))
-    .filter(x => x.c > 0)
-    .sort((a, b) => b.c - a.c || a.t.name.localeCompare(b.t.name));
+  for (const [techId, count] of state.countsByTechId.entries()) {
+    const tech = techs.find((t) => String(t.id || t.nni).toUpperCase() === String(techId).toUpperCase());
+    const label = tech?.name || techId;
+    items.push({ techId, label, count });
+  }
+
+  items.sort((a, b) => (b.count - a.count) || a.label.localeCompare(b.label, "fr"));
 
   sel.innerHTML = "";
   const optAll = document.createElement("option");
@@ -470,43 +440,39 @@ function buildTechSelectWithCounts() {
   optAll.textContent = "— Tous —";
   sel.appendChild(optAll);
 
-  for (const x of techsWithBt) {
+  for (const it of items) {
     const opt = document.createElement("option");
-    opt.value = x.t.id;
-    opt.textContent = `${x.t.name} (${x.c})`;
+    opt.value = it.techId;
+    opt.textContent = `${it.label} (${it.count})`;
     sel.appendChild(opt);
   }
 
   sel.value = state.filters.techId || "";
-  sel.addEventListener("change", () => {
-    state.filters.techId = sel.value || "";
-    renderAll();
-  });
 }
 
-// -----------------------------
-// UI: type chips
-// -----------------------------
+// ------------------------------
+// UI: chips types
+// ------------------------------
 function syncTypeChipsUI() {
   const root = $("typeChips");
   if (!root) return;
-  const chips = root.querySelectorAll(".chip");
-  chips.forEach(ch => {
-    const t = ch.getAttribute("data-type");
-    if (state.filters.types.has(t)) ch.classList.add("active");
-    else ch.classList.remove("active");
+  const buttons = root.querySelectorAll("button.chip");
+  buttons.forEach((btn) => {
+    const t = btn.dataset.type;
+    const active = state.filters.types.has(t);
+    btn.classList.toggle("active", active);
   });
 }
 
 function buildTypeChips() {
   const root = $("typeChips");
   if (!root) return;
-  root.innerHTML = "";
 
+  root.innerHTML = "";
   for (const t of DOC_TYPES) {
     const btn = document.createElement("button");
     btn.className = "chip";
-    btn.setAttribute("data-type", t);
+    btn.dataset.type = t;
     btn.textContent = t;
     btn.addEventListener("click", () => {
       if (state.filters.types.has(t)) state.filters.types.delete(t);
@@ -519,222 +485,255 @@ function buildTypeChips() {
   syncTypeChipsUI();
 }
 
-// -----------------------------
-// Filtering + rendering
-// -----------------------------
-function btMatches(bt) {
+// ------------------------------
+// Filtering
+// ------------------------------
+function btMatchesFilters(bt) {
   const q = norm(state.filters.q).toLowerCase();
+  const types = state.filters.types;
+  const techId = state.filters.techId;
+
   if (q) {
-    const hay = [
-      bt.id, bt.title, bt.client, bt.address, bt.pdl, bt.datePrevu, bt.duration,
-      (bt.team || []).map(x => x.name).join(" ")
+    const blob = [
+      bt.id,
+      bt.title,
+      bt.client,
+      bt.address,
+      bt.pdl,
+      bt.scheduledDate,
+      bt.duration,
+      (bt.team || []).map((x) => x.name).join(" "),
+      (bt.documents || []).join(" "),
     ].join(" ").toLowerCase();
-    if (!hay.includes(q)) return false;
+    if (!blob.includes(q)) return false;
   }
 
-  if (state.filters.techId) {
-    const id = state.filters.techId;
-    const has = (bt.team || []).some(m => (m.id === id));
-    if (!has) return false;
+  if (types && types.size) {
+    const hasAny = (bt.pages || []).some((p) => types.has(p.type));
+    if (!hasAny) return false;
   }
 
-  if (state.filters.types && state.filters.types.size > 0) {
-    // type filter applies to documents types inside BT pages
-    const typesInBt = new Set((bt.pages || []).map(p => p.type));
-    let ok = false;
-    for (const t of state.filters.types) {
-      if (typesInBt.has(t)) { ok = true; break; }
-    }
-    if (!ok) return false;
+  if (techId) {
+    const hasTech = (bt.team || []).some((m) => String(m.techId).toUpperCase() === String(techId).toUpperCase());
+    if (!hasTech) return false;
   }
 
   return true;
 }
 
-function countDocs(bt) {
-  const cnt = {};
-  for (const t of DOC_TYPES) cnt[t] = 0;
-  for (const p of bt.pages || []) {
-    cnt[p.type] = (cnt[p.type] || 0) + 1;
-  }
-  return cnt;
+// ------------------------------
+// Rendering cards
+// ------------------------------
+function renderCounters() {
+  const elBt = $("countBt");
+  const elPages = $("countPages");
+  const elAT = $("countAT");
+  const elProc = $("countProc");
+  const elPlan = $("countPlan");
+  const elPhoto = $("countPhoto");
+  const elDoc = $("countDoc");
+
+  if (elBt) elBt.textContent = String(state.bts.length);
+
+  const pages = state.bts.reduce((acc, bt) => acc + (bt.pages?.length || 0), 0);
+  if (elPages) elPages.textContent = String(pages);
+
+  const sumByType = (type) =>
+    state.bts.reduce((acc, bt) => acc + (bt.pages || []).filter((p) => p.type === type).length, 0);
+
+  if (elAT) elAT.textContent = String(sumByType("AT"));
+  if (elProc) elProc.textContent = String(sumByType("PROC"));
+  if (elPlan) elPlan.textContent = String(sumByType("PLAN"));
+  if (elPhoto) elPhoto.textContent = String(sumByType("PHOTO"));
+  if (elDoc) elDoc.textContent = String(sumByType("DOC"));
 }
 
-function renderAll() {
-  const root = $("results");
+function makeBadgeAT(bt) {
+  const span = document.createElement("div");
+  span.className = "badge-at";
+  const txt = bt.atNumber ? `AT ${bt.atNumber}` : "AT";
+  span.textContent = txt;
+  span.title = bt.atNumber ? `Autorisation de travail: ${bt.atNumber}` : "Autorisation de travail";
+  return span;
+}
+
+function renderBTList() {
+  const root = $("btList");
   if (!root) return;
+  root.innerHTML = "";
 
-  const list = (state.bts || []).filter(btMatches);
+  const list = state.bts.filter(btMatchesFilters);
 
-  const pills = $("topPills");
-  if (pills) {
-    const totalPages = state.totalPages || 0;
-    const nbBt = state.bts.length;
-    const nbAt = state.bts.filter(b => b.hasAT).length;
-    pills.innerHTML = `
-      <span class="pill">${nbBt} BT</span>
-      <span class="pill">${totalPages} pages</span>
-      <span class="pill">${nbAt} AT</span>
-    `;
-  }
-
-  root.innerHTML = list.map(renderBtCard).join("");
-  bindCardActions();
-}
-
-function renderBtCard(bt) {
-  const docs = countDocs(bt);
-  const atBadge = bt.hasAT
-    ? `<span class="badge badge-at">${esc(bt.atNumber || "AT")}</span>`
-    : "";
-
-  const teamLine = (bt.team || []).length
-    ? (bt.team || []).map(m => `<span class="tag" title="${esc(m.nni || "")}">${esc(m.name)}</span>`).join(" ")
-    : `<span class="muted">—</span>`;
-
-  // mini chips docs
-  const docChips = [];
-  if (docs.BT) docChips.push(`<span class="chipmini">BT:${docs.BT}</span>`);
-  if (docs.AT) docChips.push(`<span class="chipmini">AT:${docs.AT}</span>`);
-  if (docs.PROC) docChips.push(`<span class="chipmini">PROC:${docs.PROC}</span>`);
-  if (docs.PLAN) docChips.push(`<span class="chipmini">PLAN:${docs.PLAN}</span>`);
-  if (docs.PHOTO) docChips.push(`<span class="chipmini">PHOTO:${docs.PHOTO}</span>`);
-  if (docs.STREET) docChips.push(`<span class="chipmini">STREET:${docs.STREET}</span>`);
-  if (docs.DOC) docChips.push(`<span class="chipmini">DOC:${docs.DOC}</span>`);
-
-  return `
-    <div class="btcard" data-bt="${esc(bt.id)}">
-      <div class="btcard-head">
-        <div class="btid">${esc(bt.id)} ${atBadge}</div>
-        <div class="bttype">${esc(bt.typeLabel || "")}</div>
-      </div>
-
-      <div class="btobj">
-        <div class="muted">OBJET</div>
-        <div>${esc(bt.title)}</div>
-      </div>
-
-      <div class="btmeta">
-        <div><span class="muted">DATE PREVUE</span> ${esc(bt.datePrevu || "")}</div>
-        <div><span class="muted">DUREE</span> ${esc(bt.duration || "")}</div>
-        <div><span class="muted">CLIENT</span> ${esc(bt.client || "")}</div>
-        <div><span class="muted">ADRESSE</span> ${esc(bt.address || "")}</div>
-      </div>
-
-      <div class="btteam">
-        <div class="muted">ÉQUIPE (REALISATION)</div>
-        <div class="tags">${teamLine}</div>
-      </div>
-
-      <div class="btdocs">
-        ${docChips.join(" ")}
-      </div>
-
-      <div class="btactions">
-        <button class="btn" data-action="preview">Aperçu</button>
-        <button class="btn primary" data-action="export">Exporter BT</button>
-      </div>
-    </div>
-  `;
-}
-
-function bindCardActions() {
-  document.querySelectorAll(".btcard .btn").forEach(btn => {
-    btn.addEventListener("click", async (e) => {
-      const card = e.target.closest(".btcard");
-      const id = card?.getAttribute("data-bt");
-      const bt = state.bts.find(x => x.id === id);
-      const action = e.target.getAttribute("data-action");
-      if (!bt) return;
-
-      if (action === "preview") openPreview(bt);
-      if (action === "export") exportBtPdf(bt);
-    });
-  });
-}
-
-// -----------------------------
-// Preview modal (simple, compatible avec ton UI existante)
-// -----------------------------
-async function openPreview(bt) {
-  // Si ton index.html a déjà une modale, on utilise ses IDs
-  const modal = $("previewModal");
-  const frame = $("previewFrame");
-  const title = $("previewTitle");
-
-  if (!modal || !frame) {
-    alert("Modale preview non trouvée (previewModal/previewFrame).");
+  if (!list.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "Aucun BT ne correspond aux filtres.";
+    root.appendChild(empty);
     return;
   }
 
-  if (title) {
-    title.textContent = `${bt.id} — ${bt.client || ""} ${bt.address || ""}`.trim();
+  for (const bt of list) {
+    const card = document.createElement("div");
+    card.className = "bt-card";
+
+    const header = document.createElement("div");
+    header.className = "bt-header";
+
+    const title = document.createElement("div");
+    title.className = "bt-title";
+    title.textContent = bt.id || "BT";
+
+    header.appendChild(title);
+
+    // badge AT si doc AT présent ou atNumber
+    if (bt.hasAT) header.appendChild(makeBadgeAT(bt));
+
+    card.appendChild(header);
+
+    const sub = document.createElement("div");
+    sub.className = "bt-sub";
+    sub.textContent = `OBJET ${bt.title || ""}`;
+    card.appendChild(sub);
+
+    const chips = document.createElement("div");
+    chips.className = "bt-docchips";
+
+    // compte par type
+    const counts = {};
+    for (const p of bt.pages || []) counts[p.type] = (counts[p.type] || 0) + 1;
+
+    // petit résumé chips (BT:1 PROC:2 etc.)
+    const order = ["BT", "AT", "PROC", "PLAN", "PHOTO", "STREET", "DOC"];
+    for (const t of order) {
+      if (!counts[t]) continue;
+      const c = document.createElement("span");
+      c.className = "mini-chip";
+      c.textContent = `${t}:${counts[t]}`;
+      chips.appendChild(c);
+    }
+    card.appendChild(chips);
+
+    const meta = document.createElement("div");
+    meta.className = "bt-meta";
+    meta.innerHTML = `
+      <div>📅 <b>DATE PREVUE</b> ${bt.scheduledDate || "—"} &nbsp;&nbsp; ⏱️ <b>DUREE</b> ${bt.duration || "—"}</div>
+      <div>👤 <b>NOM CLIENT</b> ${bt.client || "—"} ${bt.phone ? " • " + bt.phone : ""}</div>
+      <div>📍 ${bt.address || "—"}</div>
+      <div>👥 ${(bt.team || []).map(x => x.name || x.nni).join(", ") || "—"}</div>
+    `;
+    card.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "bt-actions";
+
+    const btnPreview = document.createElement("button");
+    btnPreview.className = "btn";
+    btnPreview.textContent = "Aperçu";
+    btnPreview.addEventListener("click", () => openPreview(bt));
+
+    const btnExport = document.createElement("button");
+    btnExport.className = "btn primary";
+    btnExport.textContent = "Exporter BT";
+    btnExport.addEventListener("click", () => exportBtPdf(bt));
+
+    actions.appendChild(btnPreview);
+    actions.appendChild(btnExport);
+
+    card.appendChild(actions);
+
+    root.appendChild(card);
   }
+}
 
-  // On affiche la 1ère page du BT
-  const firstPage = bt.startPage || 1;
-  frame.setAttribute("data-page", String(firstPage));
-  await renderPdfPageToCanvas(firstPage);
+function renderAll() {
+  renderCounters();
+  buildTechSelectWithCounts();
+  renderBTList();
 
-  modal.classList.add("open");
+  // Si vue brief: si un technicien est sélectionné, on garde la liste filtrée (déjà fait par btMatchesFilters)
+}
 
-  const btnClose = $("previewClose");
-  if (btnClose) btnClose.onclick = () => modal.classList.remove("open");
+// ------------------------------
+// Preview modal
+// ------------------------------
+async function renderPageToCanvas(pdf, pageNum, canvas) {
+  const page = await pdf.getPage(pageNum);
+  const viewport = page.getViewport({ scale: 1.2 });
+  const ctx = canvas.getContext("2d");
+  canvas.width = Math.floor(viewport.width);
+  canvas.height = Math.floor(viewport.height);
+  await page.render({ canvasContext: ctx, viewport }).promise;
+}
 
+async function openPreview(bt) {
+  const modal = $("previewModal");
+  const canvas = $("previewCanvas");
+  const title = $("previewTitle");
+  const sub = $("previewSub");
+  const pagesInfo = $("previewPagesInfo");
   const btnPrev = $("previewPrev");
   const btnNext = $("previewNext");
-  if (btnPrev) btnPrev.onclick = async () => {
-    const p = parseInt(frame.getAttribute("data-page") || "1", 10);
-    const np = Math.max(bt.startPage, p - 1);
-    frame.setAttribute("data-page", String(np));
-    await renderPdfPageToCanvas(np);
+  const btnClose = $("previewClose");
+  const btnExport = $("previewExport");
+
+  if (!modal || !canvas) return;
+
+  let idx = 0;
+  const pages = bt.sourcePages || [];
+
+  const update = async () => {
+    if (!state.pdf) return;
+    const pageNum = pages[idx] || bt.startPage;
+    if (title) title.textContent = `${bt.id || "BT"} — ${bt.pages?.find(p => p.page === pageNum)?.type || ""}`;
+    if (sub) sub.textContent = `${bt.client || ""} ${bt.phone ? " • " + bt.phone : ""} • ${bt.address || ""}`.trim();
+    if (pagesInfo) pagesInfo.textContent = `Page ${idx + 1}/${pages.length}`;
+    await renderPageToCanvas(state.pdf, pageNum, canvas);
   };
-  if (btnNext) btnNext.onclick = async () => {
-    const p = parseInt(frame.getAttribute("data-page") || "1", 10);
-    const np = Math.min(bt.endPage, p + 1);
-    frame.setAttribute("data-page", String(np));
-    await renderPdfPageToCanvas(np);
-  };
+
+  if (btnPrev) btnPrev.onclick = async () => { idx = Math.max(0, idx - 1); await update(); };
+  if (btnNext) btnNext.onclick = async () => { idx = Math.min(pages.length - 1, idx + 1); await update(); };
+  if (btnClose) btnClose.onclick = () => { modal.classList.remove("open"); };
+  if (btnExport) btnExport.onclick = () => exportBtPdf(bt);
+
+  modal.classList.add("open");
+  await update();
 }
 
-async function renderPdfPageToCanvas(pageNum) {
-  const pdf = state.pdf;
-  const canvas = $("previewCanvas");
-  if (!pdf || !canvas) return;
-
-  const page = await pdf.getPage(pageNum);
-  const viewport = page.getViewport({ scale: 1.5 });
-
-  const ctx = canvas.getContext("2d");
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-
-  await page.render({ canvasContext: ctx, viewport }).promise;
-
-  const label = $("previewPageLabel");
-  if (label) label.textContent = `Page ${pageNum}/${state.totalPages}`;
-}
-
-// -----------------------------
-// Export BT pages -> PDF (simple: on exporte un PDF "images")
-// -----------------------------
+// ------------------------------
+// Export BT PDF (rebuild from pages)
+// ------------------------------
 async function exportBtPdf(bt) {
-  // Export “light” : on génère un PDF via impression navigateur (le plus robuste en GitHub Pages)
-  // => on ouvre l'aperçu et l'utilisateur imprime en PDF.
-  // (Si tu veux un vrai merge PDF plus tard, on fera pdf-lib)
-  await openPreview(bt);
-  alert("Astuce: utilise Ctrl+P dans l’aperçu et choisis “Enregistrer en PDF”. (Version 1)");
+  if (!state.pdf) return;
+
+  // Simple export = on ne "recompose" pas un PDF (sans lib dédiée),
+  // donc on fait un export image par page via canvas (zip serait mieux plus tard).
+  // Ici: on propose juste une solution minimale: ouvrir les pages dans l’aperçu.
+  // Tu m’as dit "convivial" — on améliorera ensuite (zip/pdf-lib).
+
+  alert("Export BT: pour l'instant, utilise Aperçu puis imprime/sauvegarde en PDF depuis le navigateur. (On améliorera avec un export PDF propre ensuite.)");
 }
 
-// -----------------------------
-// Wiring inputs
-// -----------------------------
+// ------------------------------
+// Wiring UI
+// ------------------------------
 function wireUI() {
-  const fileInput = $("pdfInput");
-  const btnExtract = $("btnExtract");
-  const btnReset = $("btnReset");
-  const q = $("searchInput");
+  const inp = $("pdfInput");
+  if (inp) {
+    inp.addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        setProgress(0);
+        setStatus("Initialisation…");
+        await extractFromPdf(file);
+      } catch (err) {
+        console.error(err);
+        setStatus("Erreur: " + (err?.message || err));
+      }
+    });
+  }
 
+  const q = $("searchInput");
   if (q) {
     q.addEventListener("input", () => {
       state.filters.q = q.value || "";
@@ -742,61 +741,82 @@ function wireUI() {
     });
   }
 
-  if (btnReset) {
-    btnReset.addEventListener("click", () => {
-      state.filters.q = "";
-      state.filters.types = new Set();
-      state.filters.techId = "";
-      if ($("searchInput")) $("searchInput").value = "";
-      if ($("techSelect")) $("techSelect").value = "";
-      buildTypeChips();
+  const sel = $("techSelect");
+  if (sel) {
+    sel.addEventListener("change", () => {
+      state.filters.techId = sel.value || "";
       renderAll();
     });
   }
 
-  if (btnExtract) {
-    btnExtract.addEventListener("click", async () => {
-      const f = fileInput?.files?.[0];
-      if (!f) return alert("Choisis un PDF d’abord.");
-      try {
-        await extractFromPdf(f);
-      } catch (err) {
-        console.error(err);
-        setStatus("Erreur: " + (err?.message || err));
-        alert(err?.message || err);
-      }
+  const btnReset = $("btnReset");
+  if (btnReset) {
+    btnReset.addEventListener("click", () => {
+      state.pdf = null;
+      state.pdfName = "";
+      state.totalPages = 0;
+      state.bts = [];
+      state.filters.q = "";
+      state.filters.types = new Set();
+      state.filters.techId = "";
+
+      if ($("searchInput")) $("searchInput").value = "";
+      if ($("techSelect")) $("techSelect").value = "";
+      if ($("pdfInput")) $("pdfInput").value = "";
+
+      setPdfStatus("Aucun PDF chargé");
+      setStatus("Prêt.");
+      setProgress(0);
+
+      buildTypeChips();
+      buildTechSelectWithCounts();
+      renderBTList();
+      renderCounters();
     });
   }
 
-  // Auto: si on sélectionne un PDF, on peut extraire directement si tu veux
-  if (fileInput) {
-    fileInput.addEventListener("change", () => {
-      const f = fileInput.files?.[0];
-      if (f) setStatus(`PDF prêt: ${f.name}`);
+  const btnExtract = $("btnExtract");
+  if (btnExtract) {
+    btnExtract.addEventListener("click", () => {
+      // bouton facultatif: on déclenche juste le file picker
+      $("pdfInput")?.click?.();
     });
   }
+
+  // tabs / view
+  const btnRef = $("btnViewReferent");
+  const btnBrief = $("btnViewBrief");
+  const btnFull = $("btnViewFull");
+
+  if (btnRef) btnRef.addEventListener("click", () => { state.view = "referent"; document.body.dataset.view = "referent"; });
+  if (btnBrief) btnBrief.addEventListener("click", () => { state.view = "brief"; document.body.dataset.view = "brief"; });
+  if (btnFull) btnFull.addEventListener("click", () => { state.view = "full"; document.body.dataset.view = "full"; });
 }
 
-// -----------------------------
+// ------------------------------
 // Init
-// -----------------------------
+// ------------------------------
 (async function init() {
   try {
     wireUI();
     setStatus("Prêt.");
+    setPdfStatus("Aucun PDF chargé");
     setProgress(0);
 
-    // zones preload (optionnel)
-    try {
-  await loadZones();
-} catch (e) {
-  console.error("loadZones error:", e);
-  setStatus("Erreur zones: " + (e?.message || e));
-}
-
-    // build chips + select (vide au départ)
+    // chips + select (vide au départ)
     buildTypeChips();
     buildTechSelectWithCounts();
+    renderCounters();
+    renderBTList();
+
+    // preload zones (et surtout: arrêter le "Chargement…" si OK)
+    try {
+      await loadZones();
+    } catch (e) {
+      console.error(e);
+      setZonesStatus("Erreur (zones.json)");
+      setStatus("Erreur zones.json: " + (e?.message || e));
+    }
   } catch (e) {
     console.error(e);
     setStatus("Init erreur: " + (e?.message || e));
