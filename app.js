@@ -674,14 +674,86 @@ function renderTimeline(filtered, timeline) {
     a[1].localeCompare(b[1])
   );
 
-  // Créer la grille avec positionnement absolu pour les blocs
+  // Créer une map BT par technicien
+  const btsByTech = new Map();
+  for (const bt of filtered) {
+    for (const member of bt.team || []) {
+      const tech = mapTechByNni(member.nni);
+      if (tech) {
+        const key = techKey(tech);
+        if (!btsByTech.has(key)) {
+          btsByTech.set(key, []);
+        }
+        btsByTech.get(key).push(bt);
+      }
+    }
+  }
+
+  // Calculer le nombre de sous-lignes nécessaires pour chaque technicien
+  const techRowCounts = new Map();
+  for (const [techId, techBTs] of btsByTech.entries()) {
+    // Préparer les BT avec leurs créneaux
+    const btsWithSlots = techBTs.map(bt => {
+      const timeSlot = extractTimeSlot(bt);
+      let startCol, endCol;
+      
+      if (timeSlot) {
+        let startHour = Math.max(8, Math.min(17, timeSlot.start));
+        let endHour = Math.max(8, Math.min(18, timeSlot.end));
+        startCol = Math.floor(startHour - 8) + 2;
+        endCol = Math.ceil(endHour - 8) + 2;
+      } else {
+        startCol = 2;
+        endCol = 4;
+      }
+      
+      return { bt, startCol, endCol, timeSlot };
+    });
+    
+    // Détecter les chevauchements et assigner des tracks
+    const tracks = [];
+    for (const item of btsWithSlots) {
+      let placed = false;
+      for (let trackIdx = 0; trackIdx < tracks.length; trackIdx++) {
+        const track = tracks[trackIdx];
+        const hasOverlap = track.some(existing => 
+          !(item.endCol <= existing.startCol || item.startCol >= existing.endCol)
+        );
+        
+        if (!hasOverlap) {
+          track.push(item);
+          item.track = trackIdx;
+          placed = true;
+          break;
+        }
+      }
+      
+      if (!placed) {
+        tracks.push([item]);
+        item.track = tracks.length - 1;
+      }
+    }
+    
+    techRowCounts.set(techId, { count: tracks.length, btsWithSlots });
+  }
+
+  // Calculer le total de rows
+  let totalRows = 0;
+  const techRowStarts = new Map();
+  for (const [techId] of techs) {
+    techRowStarts.set(techId, totalRows + 2); // +2 pour le header
+    const rowCount = techRowCounts.get(techId)?.count || 1;
+    totalRows += rowCount;
+  }
+
+  // Créer la grille
   const container = document.createElement("div");
   container.style.cssText = "position:relative; overflow-x:auto; background:#fff; border-radius:var(--radius); border:1.5px solid var(--line); box-shadow:var(--shadow);";
 
   const grid = document.createElement("div");
   grid.className = "timeline-grid";
   grid.style.gridTemplateColumns = `180px repeat(${hours.length}, minmax(100px, 1fr))`;
-  grid.style.gridTemplateRows = `50px repeat(${techs.length}, 70px)`;
+  grid.style.gridTemplateRows = `50px repeat(${totalRows}, 70px)`;
   grid.style.position = "relative";
 
   // Header
@@ -703,27 +775,15 @@ function renderTimeline(filtered, timeline) {
 
   grid.appendChild(header);
 
-  // Créer une map BT par technicien
-  const btsByTech = new Map();
-  for (const bt of filtered) {
-    for (const member of bt.team || []) {
-      const tech = mapTechByNni(member.nni);
-      if (tech) {
-        const key = techKey(tech);
-        if (!btsByTech.has(key)) {
-          btsByTech.set(key, []);
-        }
-        btsByTech.get(key).push(bt);
-      }
-    }
-  }
-
-  // Lignes: techniciens + cellules vides (les BT seront en position absolue)
-  techs.forEach(([techId, techName], techIdx) => {
-    // Nom du technicien
+  // Lignes: techniciens + cellules vides
+  techs.forEach(([techId, techName]) => {
+    const rowStart = techRowStarts.get(techId);
+    const rowCount = techRowCounts.get(techId)?.count || 1;
+    
+    // Nom du technicien (span sur toutes ses rows)
     const techCell = document.createElement("div");
     techCell.className = "timeline-tech";
-    techCell.style.gridRow = techIdx + 2;
+    techCell.style.gridRow = `${rowStart} / span ${rowCount}`;
     
     const avatar = document.createElement("div");
     avatar.className = "timeline-tech-avatar";
@@ -739,127 +799,104 @@ function renderTimeline(filtered, timeline) {
     grid.appendChild(techCell);
 
     // Cellules vides
-    for (let hourIdx = 0; hourIdx < hours.length; hourIdx++) {
-      const cell = document.createElement("div");
-      cell.className = "timeline-cell";
-      cell.style.gridRow = techIdx + 2;
-      cell.style.gridColumn = hourIdx + 2;
-      grid.appendChild(cell);
+    for (let rowIdx = 0; rowIdx < rowCount; rowIdx++) {
+      for (let hourIdx = 0; hourIdx < hours.length; hourIdx++) {
+        const cell = document.createElement("div");
+        cell.className = "timeline-cell";
+        cell.style.gridRow = rowStart + rowIdx;
+        cell.style.gridColumn = hourIdx + 2;
+        grid.appendChild(cell);
+      }
     }
 
-    // Ajouter les BT pour ce technicien
-    const techBTs = btsByTech.get(techId) || [];
-    
-    // Répartition automatique pour les BT sans horaires
-    let autoSlotIndex = 0;
-    const slotsPerBT = Math.floor(hours.length / (techBTs.length || 1));
-    
-    techBTs.forEach((bt, btIndex) => {
-      const timeSlot = extractTimeSlot(bt);
-      const classification = classifyIntervention(bt);
-      
-      // Debug
-      if (btIndex === 0) {
-        console.log(`[${techName}] BT ${bt.id}:`, {
-          designation: bt.designation,
-          duree: bt.duree,
-          timeSlot
-        });
-      }
-      
-      let startCol, colSpan;
-      
-      if (timeSlot) {
-        // Utiliser les heures réelles
-        let startHour = timeSlot.start;
-        let endHour = timeSlot.end;
+    // Ajouter les BT
+    const techData = techRowCounts.get(techId);
+    if (techData) {
+      for (const item of techData.btsWithSlots) {
+        const { bt, startCol, endCol, timeSlot, track } = item;
+        const classification = classifyIntervention(bt);
+        const colSpan = Math.max(1, endCol - startCol);
         
-        // Limiter aux heures de travail (8h-18h)
-        startHour = Math.max(8, Math.min(17, startHour));
-        endHour = Math.max(8, Math.min(18, endHour));
-        
-        // Calculer la colonne de début (8h = col 2, 9h = col 3, etc.)
-        startCol = Math.floor(startHour - 8) + 2;
-        const endCol = Math.ceil(endHour - 8) + 2;
-        colSpan = Math.max(1, endCol - startCol);
-      } else {
-        // Pas d'horaire trouvé, placement automatique
-        startCol = autoSlotIndex + 2;
-        colSpan = Math.max(1, slotsPerBT);
-        autoSlotIndex += colSpan;
-        
-        // Ne pas dépasser la fin de journée
-        if (startCol + colSpan > hours.length + 2) {
-          startCol = hours.length + 2 - colSpan;
+        // Debug pour le premier BT
+        if (item === techData.btsWithSlots[0]) {
+          console.log(`[${techName}] BT ${bt.id}:`, {
+            designation: bt.designation,
+            duree: bt.duree,
+            timeSlot,
+            startCol,
+            endCol,
+            colSpan,
+            track
+          });
         }
-      }
-      
-      const btDiv = document.createElement("div");
-      btDiv.className = "timeline-bt-block";
-      btDiv.style.cssText = `
-        grid-row: ${techIdx + 2};
-        grid-column: ${startCol} / span ${colSpan};
-        background: ${classification.color}20;
-        border: 2px solid ${classification.color};
-        border-radius: var(--radius-xs);
-        padding: 6px 8px;
-        cursor: pointer;
-        transition: var(--transition);
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        min-height: 50px;
-        justify-content: center;
-      `;
-      
-      const idDiv = document.createElement("div");
-      idDiv.style.cssText = `
-        font-weight: 800;
-        font-size: 11px;
-        color: ${classification.color};
-        line-height: 1.2;
-      `;
-      idDiv.textContent = bt.id;
-      
-      const typeDiv = document.createElement("div");
-      typeDiv.style.cssText = `
-        font-size: 9px;
-        font-weight: 700;
-        color: ${classification.color};
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        line-height: 1.2;
-      `;
-      typeDiv.textContent = classification.label;
-      
-      btDiv.appendChild(idDiv);
-      btDiv.appendChild(typeDiv);
-      
-      if (timeSlot && colSpan >= 3) {
-        const timeDiv = document.createElement("div");
-        timeDiv.style.cssText = `
-          font-size: 8px;
-          color: ${classification.color}CC;
-          margin-top: 2px;
+        
+        const btDiv = document.createElement("div");
+        btDiv.className = "timeline-bt-block";
+        btDiv.style.cssText = `
+          grid-row: ${rowStart + track};
+          grid-column: ${startCol} / span ${colSpan};
+          background: ${classification.color}20;
+          border: 2px solid ${classification.color};
+          border-radius: var(--radius-xs);
+          padding: 6px 8px;
+          cursor: pointer;
+          transition: var(--transition);
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          min-height: 50px;
+          justify-content: center;
         `;
-        timeDiv.textContent = timeSlot.text;
-        btDiv.appendChild(timeDiv);
+        
+        const idDiv = document.createElement("div");
+        idDiv.style.cssText = `
+          font-weight: 800;
+          font-size: 11px;
+          color: ${classification.color};
+          line-height: 1.2;
+        `;
+        idDiv.textContent = bt.id;
+        
+        const typeDiv = document.createElement("div");
+        typeDiv.style.cssText = `
+          font-size: 9px;
+          font-weight: 700;
+          color: ${classification.color};
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          line-height: 1.2;
+        `;
+        typeDiv.textContent = classification.label;
+        
+        btDiv.appendChild(idDiv);
+        btDiv.appendChild(typeDiv);
+        
+        if (timeSlot && colSpan >= 3) {
+          const timeDiv = document.createElement("div");
+          timeDiv.style.cssText = `
+            font-size: 8px;
+            color: ${classification.color}CC;
+            margin-top: 2px;
+          `;
+          timeDiv.textContent = timeSlot.text;
+          btDiv.appendChild(timeDiv);
+        }
+        
+        btDiv.addEventListener("click", () => openModal(bt, bt.pageStart));
+        btDiv.addEventListener("mouseenter", () => {
+          btDiv.style.transform = "translateY(-2px)";
+          btDiv.style.boxShadow = "var(--shadow)";
+          btDiv.style.zIndex = "10";
+        });
+        btDiv.addEventListener("mouseleave", () => {
+          btDiv.style.transform = "translateY(0)";
+          btDiv.style.boxShadow = "none";
+          btDiv.style.zIndex = "1";
+        });
+        
+        grid.appendChild(btDiv);
       }
-      
-      btDiv.addEventListener("click", () => openModal(bt, bt.pageStart));
-      btDiv.addEventListener("mouseenter", () => {
-        btDiv.style.transform = "translateY(-2px)";
-        btDiv.style.boxShadow = "var(--shadow)";
-        btDiv.style.zIndex = "10";
-      });
-      btDiv.addEventListener("mouseleave", () => {
-        btDiv.style.transform = "translateY(0)";
-        btDiv.style.boxShadow = "none";
-        btDiv.style.zIndex = "1";
-      });
-      
-      grid.appendChild(btDiv);
-    });
+    }
   });
 
   container.appendChild(grid);
