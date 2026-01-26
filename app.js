@@ -787,7 +787,12 @@ function wireUI() {
     setProgress(0);
 
     // zones preload (optionnel)
-    try { await loadZones(); } catch { /* ignore */ }
+    try {
+  await loadZones();
+} catch (e) {
+  console.error("loadZones error:", e);
+  setStatus("Erreur zones: " + (e?.message || e));
+}
 
     // build chips + select (vide au départ)
     buildTypeChips();
