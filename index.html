@@ -10,16 +10,18 @@
   <header class="topbar">
     <div class="brand">
       <div class="brand__title">DEMAT-BT</div>
-      <div class="brand__sub">Dématérialisation BT — Référent d’équipe</div>
+      <div class="brand__sub">Dématérialisation BT — Référent d'équipe</div>
     </div>
 
     <div class="topbar__actions">
       <label class="btn btn--secondary">
-        Importer PDF du jour
+        <span>📁</span> Importer PDF du jour
         <input id="pdfFile" type="file" accept="application/pdf" hidden />
       </label>
 
-      <button id="btnExtract" class="btn">Extraire</button>
+      <button id="btnExtract" class="btn">
+        <span>⚡</span> Extraire
+      </button>
 
       <div class="seg">
         <button class="seg__btn seg__btn--active" data-view="referent">Référent</button>
@@ -27,7 +29,7 @@
       </div>
 
       <button id="btnFullscreen" class="btn btn--secondary" title="Plein écran">
-        Plein écran
+        <span>⛶</span> Plein écran
       </button>
     </div>
   </header>
@@ -74,13 +76,13 @@
         <select id="techSelect" class="select">
           <option value="">— Tous —</option>
         </select>
-        <div class="hint">Pour le Brief, sélectionne un technicien → ses BT s’affichent.</div>
+        <div class="hint">Pour le Brief, sélectionne un technicien → ses BT s'affichent.</div>
       </div>
 
       <div class="divider"></div>
 
       <div class="hint">
-        Règle : <b>toute page après un BT</b> est rattachée à ce BT <b>jusqu’au BT suivant</b>.
+        Règle : <b>toute page après un BT</b> est rattachée à ce BT <b>jusqu'au BT suivant</b>.
       </div>
     </aside>
 
@@ -90,14 +92,54 @@
       <section id="viewReferent" class="view view--active">
         <div class="row row--space">
           <div>
-            <h2 class="h2">Référent d’équipe</h2>
+            <h2 class="h2">Référent d'équipe</h2>
             <div class="sub">Tous les BT détectés + documents associés (AT, procédure, plan, photo, doc…)</div>
           </div>
 
-          <div class="kpis" id="kpis"></div>
+          <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+            <div class="kpis" id="kpis"></div>
+            
+            <div class="seg">
+              <button class="seg__btn seg__btn--active" data-layout="grid">
+                <span>◼</span> Vignettes
+              </button>
+              <button class="seg__btn" data-layout="timeline">
+                <span>◐</span> Timeline
+              </button>
+            </div>
+          </div>
         </div>
 
         <div id="btGrid" class="grid"></div>
+        <div id="btTimeline" class="timeline" style="display:none;">
+          <div style="padding:12px 16px; background:#fafbfc; border-bottom:1.5px solid var(--line); display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+            <span style="font-size:12px; font-weight:700; color:var(--txt-light);">Légende :</span>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; font-size:11px;">
+              <span style="display:flex; align-items:center; gap:4px;">
+                <span style="width:16px; height:3px; background:#2563eb; border-radius:2px;"></span> BT
+              </span>
+              <span style="display:flex; align-items:center; gap:4px;">
+                <span style="width:16px; height:3px; background:#10b981; border-radius:2px;"></span> AT
+              </span>
+              <span style="display:flex; align-items:center; gap:4px;">
+                <span style="width:16px; height:3px; background:#f59e0b; border-radius:2px;"></span> PROC
+              </span>
+              <span style="display:flex; align-items:center; gap:4px;">
+                <span style="width:16px; height:3px; background:#a855f7; border-radius:2px;"></span> PLAN
+              </span>
+              <span style="display:flex; align-items:center; gap:4px;">
+                <span style="width:16px; height:3px; background:#ef4444; border-radius:2px;"></span> PHOTO
+              </span>
+              <span style="display:flex; align-items:center; gap:4px;">
+                <span style="width:16px; height:3px; background:#14b8a6; border-radius:2px;"></span> STREET
+              </span>
+              <span style="display:flex; align-items:center; gap:4px;">
+                <span style="width:16px; height:3px; background:#64748b; border-radius:2px;"></span> DOC
+              </span>
+            </div>
+            <span style="font-size:11px; color:var(--muted); margin-left:auto;">Cliquez sur un BT pour voir les détails</span>
+          </div>
+        </div>
       </section>
 
       <!-- Brief view -->
@@ -105,7 +147,7 @@
         <div class="briefHeader">
           <div>
             <h2 class="h2">Brief équipe (Samsung Flip)</h2>
-            <div class="sub">Sélectionne un technicien → ses BT + docs s’affichent instantanément.</div>
+            <div class="sub">Sélectionne un technicien → ses BT + docs s'affichent instantanément.</div>
           </div>
           <div class="briefMeta" id="briefMeta"></div>
         </div>
@@ -124,9 +166,15 @@
             </div>
 
             <div class="modal__actions">
-              <button id="btnPrevPage" class="btn btn--secondary">Page -</button>
-              <button id="btnNextPage" class="btn btn--secondary">Page +</button>
-              <button id="btnExportBt" class="btn">Exporter BT (PDF)</button>
+              <button id="btnPrevPage" class="btn btn--secondary">
+                <span>←</span> Page -
+              </button>
+              <button id="btnNextPage" class="btn btn--secondary">
+                Page + <span>→</span>
+              </button>
+              <button id="btnExportBt" class="btn">
+                <span>💾</span> Exporter BT (PDF)
+              </button>
               <button class="btn btn--secondary" data-close="1">Fermer</button>
             </div>
           </div>

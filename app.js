@@ -1,9 +1,10 @@
-/* app.js — DEMAT-BT (GitHub Pages)
+/* app.js — DEMAT-BT v2.0 (Version avec modal + viewer)
    Compatible avec TON index.html :
    - Référent:  #viewReferent + #btGrid + #kpis
    - Brief:     #viewBrief + #briefList + #briefMeta
    - Import PDF: input#pdfFile
    - Extraire:   button#btnExtract
+   - Modal viewer: #modal avec canvas
 */
 
 const DOC_TYPES = ["BT", "AT", "PROC", "PLAN", "PHOTO", "STREET", "DOC"];
@@ -16,20 +17,18 @@ const state = {
   totalPages: 0,
   bts: [],
   view: "referent", // referent | brief
-  selectedBtId: "",
+  layout: "grid", // grid | timeline
   filters: {
     q: "",
     types: new Set(),
     techId: ""
   },
   countsByTechId: new Map(),
-  viewer: {
-    isOpen: false,
-    page: 1,
-    title: "",
-    subtitle: "",
-    btId: "", // si ouvert depuis un BT, utile pour export
-    range: null // {start,end} facultatif (pour info)
+  // modal viewer state
+  modal: {
+    open: false,
+    currentBT: null,
+    currentPage: 1
   }
 };
 
@@ -62,7 +61,7 @@ function setExtractEnabled(enabled) {
 function norm(s) {
   return (s || "")
     .replace(/\s+/g, " ")
-    .replace(/[’]/g, "'")
+    .replace(/[']/g, "'")
     .trim();
 }
 
@@ -92,8 +91,7 @@ function getZoneBBox(label) {
 }
 
 // -------------------------
-// PDF.js via script tag (tu l’as déjà dans ton ancien setup ?)
-// Ici on utilise la version "déjà chargée" si tu l’as, sinon on charge.
+// PDF.js via script tag
 // -------------------------
 async function ensurePdfJs() {
   if (window.pdfjsLib) return;
@@ -201,7 +199,6 @@ async function extractAll() {
 
   state.bts = [];
   state.countsByTechId = new Map();
-  state.selectedBtId = "";
 
   let currentBT = null;
 
@@ -260,10 +257,6 @@ async function extractAll() {
   }
 
   setProgress(100, `Terminé : ${state.bts.length} BT détectés.`);
-  if (state.pdfName) {
-    const pagesLiees = state.bts.reduce((a, b) => a + (b.docs?.length || 0), 0);
-    setPdfStatus(`${state.pdfName} — ${state.bts.length} BT — ${pagesLiees} pages liées`);
-  }
   console.log("[DEMAT-BT] Extraction OK ✅", state.bts.length, "BT");
   renderAll();
 }
@@ -301,39 +294,38 @@ function syncTypeChipsUI() {
 }
 
 // -------------------------
-// UI: select technicien avec compteurs
+// Tech select (avec compteurs)
 // -------------------------
 function buildTechSelectWithCounts() {
   const sel = $("techSelect");
   if (!sel) return;
 
+  const current = sel.value;
+  sel.innerHTML = '<option value="">— Tous —</option>';
+
   const techs = window.TECHNICIANS || [];
-  const items = [];
+  const withBt = techs.filter(t => {
+    const cnt = state.countsByTechId.get(techKey(t)) || 0;
+    return cnt > 0;
+  });
 
-  for (const t of techs) {
-    const key = techKey(t);
-    const c = state.countsByTechId.get(key) || 0;
-    if (c > 0) items.push({ ...t, count: c });
-  }
+  // tri alpha
+  withBt.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
-  items.sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name, "fr"));
-
-  const current = state.filters.techId || "";
-
-  sel.innerHTML = "";
-  const optAll = document.createElement("option");
-  optAll.value = "";
-  optAll.textContent = "— Tous —";
-  sel.appendChild(optAll);
-
-  for (const t of items) {
+  for (const t of withBt) {
+    const cnt = state.countsByTechId.get(techKey(t)) || 0;
     const opt = document.createElement("option");
     opt.value = techKey(t);
-    opt.textContent = `${t.name} (${t.count})`;
+    opt.textContent = `${t.name} (${cnt} BT)`;
     sel.appendChild(opt);
   }
 
-  sel.value = current;
+  // restore selection si encore valide
+  if (current && withBt.some(t => techKey(t) === current)) {
+    sel.value = current;
+  } else {
+    sel.value = "";
+  }
 }
 
 // -------------------------
@@ -368,141 +360,6 @@ function matchesFilters(bt) {
 }
 
 // -------------------------
-// Helpers: docs groupés + ranges BT
-// -------------------------
-function groupDocs(docs) {
-  const out = {};
-  for (const d of docs || []) {
-    if (!d || !d.type || !d.page) continue;
-    if (!out[d.type]) out[d.type] = [];
-    out[d.type].push(d.page);
-  }
-  for (const k of Object.keys(out)) {
-    out[k] = [...new Set(out[k])].sort((a, b) => a - b);
-  }
-  return out;
-}
-
-function getBtById(btId) {
-  const id = (btId || "").toUpperCase();
-  return state.bts.find(b => (b.id || "").toUpperCase() === id) || null;
-}
-
-function getBtRange(btId) {
-  const bt = getBtById(btId);
-  if (!bt) return null;
-  const idx = state.bts.findIndex(b => b.id === bt.id);
-  const start = bt.pageStart || 1;
-  let end = state.totalPages || start;
-  if (idx >= 0 && idx < state.bts.length - 1) {
-    const next = state.bts[idx + 1];
-    if (next?.pageStart) end = Math.max(start, next.pageStart - 1);
-  }
-  return { start, end };
-}
-
-// -------------------------
-// Viewer (modal) — PDF render + export BT
-// -------------------------
-function openViewer({ page = 1, title = "Aperçu", subtitle = "", btId = "", range = null } = {}) {
-  const modal = $("modal");
-  if (!modal) return;
-
-  state.viewer.isOpen = true;
-  state.viewer.page = Math.max(1, Math.min(state.totalPages || 1, page));
-  state.viewer.title = title;
-  state.viewer.subtitle = subtitle;
-  state.viewer.btId = btId || "";
-  state.viewer.range = range;
-
-  const t = $("modalTitle");
-  const st = $("modalSubtitle");
-  if (t) t.textContent = title;
-  if (st) st.textContent = subtitle;
-
-  modal.setAttribute("aria-hidden", "false");
-  renderViewerPage(state.viewer.page);
-  syncViewerButtons();
-}
-
-function closeViewer() {
-  const modal = $("modal");
-  if (!modal) return;
-  state.viewer.isOpen = false;
-  modal.setAttribute("aria-hidden", "true");
-}
-
-async function renderViewerPage(pageNum) {
-  if (!state.pdf) return;
-  const canvas = $("canvas");
-  const info = $("modalInfo");
-  if (!canvas) return;
-
-  const page = await state.pdf.getPage(pageNum);
-  const viewport = page.getViewport({ scale: 1.25 });
-
-  const dpr = window.devicePixelRatio || 1;
-  const ctx = canvas.getContext("2d", { alpha: false });
-  canvas.width = Math.floor(viewport.width * dpr);
-  canvas.height = Math.floor(viewport.height * dpr);
-  canvas.style.width = `${Math.floor(viewport.width)}px`;
-  canvas.style.height = `${Math.floor(viewport.height)}px`;
-
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, viewport.width, viewport.height);
-
-  await page.render({ canvasContext: ctx, viewport }).promise;
-
-  const rangeTxt = state.viewer.range ? ` — BT p.${state.viewer.range.start}→${state.viewer.range.end}` : "";
-  if (info) info.textContent = `Page ${pageNum}/${state.totalPages}${rangeTxt}`;
-}
-
-function syncViewerButtons() {
-  const prev = $("btnPrevPage");
-  const next = $("btnNextPage");
-  const exp = $("btnExportBt");
-
-  if (prev) prev.disabled = state.viewer.page <= 1;
-  if (next) next.disabled = state.viewer.page >= (state.totalPages || 1);
-  if (exp) exp.disabled = !state.viewer.btId;
-}
-
-async function exportCurrentBt() {
-  if (!state.pdfFile) return;
-  const btId = state.viewer.btId;
-  const range = getBtRange(btId);
-  if (!range) return;
-
-  try {
-    const srcBytes = await state.pdfFile.arrayBuffer();
-    const srcPdf = await PDFLib.PDFDocument.load(srcBytes);
-    const outPdf = await PDFLib.PDFDocument.create();
-
-    const pages = [];
-    for (let p = range.start; p <= range.end; p++) pages.push(p - 1); // pdf-lib = 0-index
-
-    const copied = await outPdf.copyPages(srcPdf, pages);
-    copied.forEach(pg => outPdf.addPage(pg));
-
-    const outBytes = await outPdf.save();
-    const blob = new Blob([outBytes], { type: "application/pdf" });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${btId || "BT"}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
-  } catch (e) {
-    console.error(e);
-    alert("Export impossible (voir console).\nAstuce: vérifie que pdf-lib est bien chargé.");
-  }
-}
-
-// -------------------------
 // Render KPI
 // -------------------------
 function renderKpis(filtered) {
@@ -514,7 +371,7 @@ function renderKpis(filtered) {
 
   kpis.innerHTML = `
     <div class="kpi"><b>${totalBT}</b> BT</div>
-    <div class="kpi"><b>${docsCount}</b> pages liées</div>
+    <div class="kpi"><b>${docsCount}</b> Pages liées</div>
   `;
 }
 
@@ -523,8 +380,23 @@ function renderKpis(filtered) {
 // -------------------------
 function renderReferent(filtered) {
   const grid = $("btGrid");
-  if (!grid) return;
+  const timeline = $("btTimeline");
+  
+  if (!grid || !timeline) return;
 
+  // Show/hide based on layout mode
+  if (state.layout === "grid") {
+    grid.style.display = "grid";
+    timeline.style.display = "none";
+    renderGrid(filtered, grid);
+  } else {
+    grid.style.display = "none";
+    timeline.style.display = "flex";
+    renderTimeline(filtered, timeline);
+  }
+}
+
+function renderGrid(filtered, grid) {
   grid.innerHTML = "";
   if (filtered.length === 0) {
     grid.innerHTML = `<div class="hint" style="padding:16px;">Aucun BT à afficher avec ces filtres.</div>`;
@@ -532,56 +404,219 @@ function renderReferent(filtered) {
   }
 
   for (const bt of filtered) {
-    const teamTxt = (bt.team || [])
-      .map(m => {
-        const tech = mapTechByNni(m.nni);
-        return tech ? tech.name : m.nni;
-      })
-      .join(" • ") || "—";
+    const teamTxt = (bt.team || []).map(m => {
+      const tech = mapTechByNni(m.nni);
+      return tech ? tech.name : m.nni;
+    }).join(" • ") || "—";
 
-    const docsByType = groupDocs(bt.docs || []);
-    const badges = Object.keys(docsByType)
-      .sort((a, b) => (a === "BT" ? -1 : b === "BT" ? 1 : a.localeCompare(b)))
-      .map(t => {
-        const pages = docsByType[t];
-        const cls = t === "BT" ? "badge badge--strong" : "badge";
-        return `<button class="${cls}" data-action="open-doc" data-bt="${bt.id}" data-type="${t}" data-page="${pages[0]}">
-          ${t}${pages.length > 1 ? `:${pages.length}` : ""}
-        </button>`;
-      })
-      .join("");
+    // Compter les docs par type
+    const counts = {};
+    for (const d of bt.docs || []) counts[d.type] = (counts[d.type] || 0) + 1;
 
     const card = document.createElement("div");
-    const isSelected = state.selectedBtId === bt.id;
-    card.className = `btCard${isSelected ? " btCard--selected" : ""}`;
-    card.setAttribute("data-bt", bt.id);
-
-    card.innerHTML = `
-      <div class="btTop">
-        <div>
-          <div class="btId">${bt.id || "BT ?"}</div>
-          <div class="btMeta">${bt.objet || ""}</div>
-        </div>
-        <div class="btActions">
-          <button class="btn btn--secondary" data-action="open-bt" data-bt="${bt.id}">📄 Ouvrir</button>
-        </div>
-      </div>
-
-      <div class="btMeta">
-        <div>📅 ${bt.datePrevue || "—"}</div>
-        <div>📍 ${bt.localisation || "—"}</div>
-        <div>👤 ${bt.client || "—"}</div>
-        <div>👥 ${teamTxt}</div>
-        ${bt.atNum ? `<div>🧾 ${bt.atNum}</div>` : ""}
-      </div>
-
-      <div class="badges" aria-label="Documents">
-        ${badges}
-      </div>
+    card.className = "card btCard";
+    
+    // Top section avec ID et badges
+    const topDiv = document.createElement("div");
+    topDiv.className = "btTop";
+    
+    const idDiv = document.createElement("div");
+    idDiv.className = "btId";
+    idDiv.textContent = bt.id || "BT ?";
+    
+    const badgesDiv = document.createElement("div");
+    badgesDiv.className = "badges";
+    
+    // Créer des badges pour chaque type de doc
+    for (const [type, count] of Object.entries(counts)) {
+      const badge = document.createElement("span");
+      badge.className = type === "BT" ? "badge badge--strong" : "badge";
+      badge.textContent = `${type}:${count}`;
+      badgesDiv.appendChild(badge);
+    }
+    
+    topDiv.appendChild(idDiv);
+    topDiv.appendChild(badgesDiv);
+    
+    // Meta info
+    const metaDiv = document.createElement("div");
+    metaDiv.className = "btMeta";
+    metaDiv.innerHTML = `
+      <div>📅 ${bt.datePrevue || "—"}</div>
+      <div>📋 ${bt.objet || "—"}</div>
+      <div>👤 ${bt.client || "—"}</div>
+      <div>📍 ${bt.localisation || "—"}</div>
+      <div>👥 ${teamTxt}</div>
+      ${bt.atNum ? `<div>🧾 ${bt.atNum}</div>` : ""}
     `;
-
+    
+    // Actions (boutons pour voir les docs)
+    const actionsDiv = document.createElement("div");
+    actionsDiv.className = "btActions";
+    
+    // Créer un bouton pour chaque document
+    for (const doc of bt.docs || []) {
+      const btn = document.createElement("button");
+      btn.className = "btn btn--secondary";
+      btn.textContent = `${doc.type} (p.${doc.page})`;
+      btn.addEventListener("click", () => openModal(bt, doc.page));
+      actionsDiv.appendChild(btn);
+    }
+    
+    card.appendChild(topDiv);
+    card.appendChild(metaDiv);
+    card.appendChild(actionsDiv);
     grid.appendChild(card);
   }
+}
+
+function renderTimeline(filtered, timeline) {
+  timeline.innerHTML = "";
+  
+  if (filtered.length === 0) {
+    timeline.innerHTML = `<div class="timeline-empty">Aucun BT à afficher avec ces filtres.</div>`;
+    return;
+  }
+
+  // Définir les heures de travail (8h-18h)
+  const hours = [];
+  for (let h = 8; h <= 18; h++) {
+    hours.push(`${h}h`);
+  }
+
+  // Récupérer tous les techniciens qui ont des BT
+  const techSet = new Map(); // Map<techId, techName>
+  for (const bt of filtered) {
+    for (const member of bt.team || []) {
+      const tech = mapTechByNni(member.nni);
+      if (tech) {
+        const key = techKey(tech);
+        if (!techSet.has(key)) {
+          techSet.set(key, tech.name);
+        }
+      }
+    }
+  }
+
+  if (techSet.size === 0) {
+    timeline.innerHTML = `<div class="timeline-empty">Aucun technicien trouvé pour ces BT.</div>`;
+    return;
+  }
+
+  // Trier les techniciens par nom
+  const techs = Array.from(techSet.entries()).sort((a, b) => 
+    a[1].localeCompare(b[1])
+  );
+
+  // Créer la grille
+  const grid = document.createElement("div");
+  grid.className = "timeline-grid";
+  grid.style.gridTemplateColumns = `200px repeat(${hours.length}, 1fr)`;
+  grid.style.gridTemplateRows = `50px repeat(${techs.length}, auto)`;
+
+  // Header: coin + heures
+  const header = document.createElement("div");
+  header.className = "timeline-header";
+
+  const corner = document.createElement("div");
+  corner.className = "timeline-corner";
+  corner.textContent = "Techniciens";
+  header.appendChild(corner);
+
+  for (let i = 0; i < hours.length; i++) {
+    const hourCell = document.createElement("div");
+    hourCell.className = "timeline-hour";
+    hourCell.style.gridColumn = i + 2;
+    hourCell.textContent = hours[i];
+    header.appendChild(hourCell);
+  }
+
+  grid.appendChild(header);
+
+  // Créer une map BT par technicien
+  const btsByTech = new Map(); // Map<techId, BT[]>
+  for (const bt of filtered) {
+    for (const member of bt.team || []) {
+      const tech = mapTechByNni(member.nni);
+      if (tech) {
+        const key = techKey(tech);
+        if (!btsByTech.has(key)) {
+          btsByTech.set(key, []);
+        }
+        btsByTech.get(key).push(bt);
+      }
+    }
+  }
+
+  // Lignes: techniciens + cellules
+  techs.forEach(([techId, techName], techIdx) => {
+    const row = document.createElement("div");
+    row.className = "timeline-row";
+
+    // Nom du technicien
+    const techCell = document.createElement("div");
+    techCell.className = "timeline-tech";
+    techCell.style.gridRow = techIdx + 2;
+    
+    const avatar = document.createElement("div");
+    avatar.className = "timeline-tech-avatar";
+    avatar.textContent = techName.substring(0, 2).toUpperCase();
+    
+    const nameDiv = document.createElement("div");
+    nameDiv.textContent = techName;
+    
+    techCell.appendChild(avatar);
+    techCell.appendChild(nameDiv);
+    row.appendChild(techCell);
+
+    // Cellules pour chaque heure
+    const techBTs = btsByTech.get(techId) || [];
+    
+    // Répartir les BT sur les heures (simple: on les étale sur la journée)
+    // Si on a des heures dans les BT, on pourrait les parser, sinon on répartit
+    const btsPerHour = Math.ceil(techBTs.length / hours.length);
+    
+    for (let hourIdx = 0; hourIdx < hours.length; hourIdx++) {
+      const cell = document.createElement("div");
+      cell.className = "timeline-cell";
+      cell.style.gridRow = techIdx + 2;
+      cell.style.gridColumn = hourIdx + 2;
+
+      // Ajouter les BT pour cette cellule
+      const startIdx = hourIdx * btsPerHour;
+      const endIdx = Math.min(startIdx + btsPerHour, techBTs.length);
+      const cellBTs = techBTs.slice(startIdx, endIdx);
+
+      for (const bt of cellBTs) {
+        // Déterminer le type principal du BT (premier type non-BT, ou BT)
+        const mainType = bt.docs.find(d => d.type !== "BT")?.type || "BT";
+        
+        const btDiv = document.createElement("div");
+        btDiv.className = `timeline-bt timeline-bt--${mainType}`;
+        
+        const idDiv = document.createElement("div");
+        idDiv.className = "timeline-bt-id";
+        idDiv.textContent = bt.id;
+        
+        const descDiv = document.createElement("div");
+        descDiv.className = "timeline-bt-desc";
+        descDiv.textContent = bt.objet || bt.localisation || "—";
+        
+        btDiv.appendChild(idDiv);
+        btDiv.appendChild(descDiv);
+        
+        btDiv.addEventListener("click", () => openModal(bt, bt.pageStart));
+        
+        cell.appendChild(btDiv);
+      }
+
+      row.appendChild(cell);
+    }
+
+    grid.appendChild(row);
+  });
+
+  timeline.appendChild(grid);
 }
 
 // -------------------------
@@ -603,7 +638,7 @@ function renderBrief(filtered) {
 
   const techs = window.TECHNICIANS || [];
   const t = techs.find(x => techKey(x) === state.filters.techId);
-  if (meta) meta.textContent = t ? t.name : "";
+  if (meta) meta.textContent = t ? `${t.name} — ${filtered.length} BT` : "";
 
   list.innerHTML = "";
   if (filtered.length === 0) {
@@ -612,42 +647,151 @@ function renderBrief(filtered) {
   }
 
   for (const bt of filtered) {
-    const docsByType = groupDocs(bt.docs || []);
-    const docBtns = Object.keys(docsByType)
-      .sort((a, b) => (a === "BT" ? -1 : b === "BT" ? 1 : a.localeCompare(b)))
-      .map(t => {
-        const pages = docsByType[t];
-        return `<button class="docBtn" data-action="open-doc" data-bt="${bt.id}" data-type="${t}" data-page="${pages[0]}">
-          ${t}${pages.length > 1 ? ` (${pages.length})` : ""}
-        </button>`;
-      })
-      .join("");
+    const card = document.createElement("div");
+    card.className = "card briefCard";
 
-    const item = document.createElement("div");
-    const isSelected = state.selectedBtId === bt.id;
-    item.className = `briefCard${isSelected ? " btCard--selected" : ""}`;
-    item.setAttribute("data-bt", bt.id);
+    const titleDiv = document.createElement("div");
+    titleDiv.className = "briefTitle";
+    titleDiv.textContent = bt.id;
 
-    item.innerHTML = `
-      <div class="btTop">
-        <div>
-          <h3 class="briefTitle" style="margin:0">${bt.id}</h3>
-          <div class="briefSub">📅 ${bt.datePrevue || "—"} • 📍 ${bt.localisation || "—"}</div>
-        </div>
-        <div class="btActions">
-          <button class="btn btn--secondary" data-action="open-bt" data-bt="${bt.id}">📄 Ouvrir</button>
-        </div>
-      </div>
-
-      <div class="btMeta">${bt.objet || ""}</div>
-      <div class="btMeta">👤 ${bt.client || "—"} ${bt.atNum ? ` • 🧾 ${bt.atNum}` : ""}</div>
-
-      <div class="briefDocs">
-        ${docBtns}
-      </div>
+    const subDiv = document.createElement("div");
+    subDiv.className = "briefSub";
+    subDiv.innerHTML = `
+      <div>📋 ${bt.objet || "—"}</div>
+      <div>📅 ${bt.datePrevue || "—"}</div>
+      <div>👤 ${bt.client || "—"}</div>
+      <div>📍 ${bt.localisation || "—"}</div>
+      ${bt.atNum ? `<div>🧾 ${bt.atNum}</div>` : ""}
     `;
 
-    list.appendChild(item);
+    const docsDiv = document.createElement("div");
+    docsDiv.className = "briefDocs";
+
+    // Créer un bouton pour chaque document
+    for (const doc of bt.docs || []) {
+      const btn = document.createElement("button");
+      btn.className = "docBtn";
+      btn.textContent = `${doc.type} (p.${doc.page})`;
+      btn.addEventListener("click", () => openModal(bt, doc.page));
+      docsDiv.appendChild(btn);
+    }
+
+    card.appendChild(titleDiv);
+    card.appendChild(subDiv);
+    card.appendChild(docsDiv);
+    list.appendChild(card);
+  }
+}
+
+// -------------------------
+// Modal viewer
+// -------------------------
+function openModal(bt, pageNum) {
+  state.modal.open = true;
+  state.modal.currentBT = bt;
+  state.modal.currentPage = pageNum;
+
+  const modal = $("modal");
+  if (modal) modal.setAttribute("aria-hidden", "false");
+
+  const title = $("modalTitle");
+  if (title) title.textContent = `${bt.id} — Page ${pageNum}`;
+
+  const subtitle = $("modalSubtitle");
+  if (subtitle) subtitle.textContent = bt.objet || "";
+
+  renderPage(pageNum);
+}
+
+function closeModal() {
+  state.modal.open = false;
+  state.modal.currentBT = null;
+
+  const modal = $("modal");
+  if (modal) modal.setAttribute("aria-hidden", "true");
+}
+
+async function renderPage(pageNum) {
+  if (!state.pdf || pageNum < 1 || pageNum > state.totalPages) return;
+
+  const canvas = $("canvas");
+  if (!canvas) return;
+
+  const page = await state.pdf.getPage(pageNum);
+  const viewport = page.getViewport({ scale: 2.0 });
+
+  const ctx = canvas.getContext("2d");
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+
+  await page.render({ canvasContext: ctx, viewport }).promise;
+
+  const info = $("modalInfo");
+  if (info) info.textContent = `Page ${pageNum} / ${state.totalPages}`;
+
+  // Update modal title
+  const title = $("modalTitle");
+  if (title && state.modal.currentBT) {
+    title.textContent = `${state.modal.currentBT.id} — Page ${pageNum}`;
+  }
+
+  state.modal.currentPage = pageNum;
+}
+
+function nextPage() {
+  if (!state.modal.open) return;
+  const next = state.modal.currentPage + 1;
+  if (next <= state.totalPages) {
+    renderPage(next);
+  }
+}
+
+function prevPage() {
+  if (!state.modal.open) return;
+  const prev = state.modal.currentPage - 1;
+  if (prev >= 1) {
+    renderPage(prev);
+  }
+}
+
+// Export BT complet en PDF
+async function exportBTPDF() {
+  if (!state.modal.currentBT || !window.PDFLib) {
+    alert("Impossible d'exporter : pdf-lib non chargé");
+    return;
+  }
+
+  try {
+    const bt = state.modal.currentBT;
+    const pages = bt.docs.map(d => d.page);
+
+    // Charger le PDF original
+    const arrayBuf = await state.pdfFile.arrayBuffer();
+    const pdfDoc = await window.PDFLib.PDFDocument.load(arrayBuf);
+
+    // Créer un nouveau PDF
+    const newPdf = await window.PDFLib.PDFDocument.create();
+
+    // Copier les pages du BT
+    for (const pageNum of pages) {
+      const [copiedPage] = await newPdf.copyPages(pdfDoc, [pageNum - 1]);
+      newPdf.addPage(copiedPage);
+    }
+
+    // Sauvegarder
+    const pdfBytes = await newPdf.save();
+    const blob = new Blob([pdfBytes], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${bt.id}_export.pdf`;
+    a.click();
+
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error("Erreur export PDF:", e);
+    alert("Erreur lors de l'export PDF");
   }
 }
 
@@ -656,8 +800,6 @@ function renderBrief(filtered) {
 // -------------------------
 function setView(view) {
   state.view = view;
-
-  document.body.classList.toggle("flip", view === "brief");
 
   const vRef = $("viewReferent");
   const vBrief = $("viewBrief");
@@ -669,6 +811,13 @@ function setView(view) {
   document.querySelectorAll(".seg__btn[data-view]").forEach(b => {
     b.classList.toggle("seg__btn--active", b.getAttribute("data-view") === view);
   });
+
+  // Toggle flip mode for brief
+  if (view === "brief") {
+    document.body.classList.add("flip");
+  } else {
+    document.body.classList.remove("flip");
+  }
 
   renderAll();
 }
@@ -717,88 +866,20 @@ function wireEvents() {
     });
   });
 
-  // Delegation clics BT/DOC (référent + brief)
-  const handleBtClick = (e) => {
-    const btn = e.target.closest("button[data-action]");
-    if (!btn) return;
-    const action = btn.getAttribute("data-action");
-    const btId = btn.getAttribute("data-bt") || "";
-    const page = parseInt(btn.getAttribute("data-page") || "", 10);
-    const type = btn.getAttribute("data-type") || "";
-
-    if (!btId) return;
-    state.selectedBtId = btId;
-    renderAll();
-
-    const range = getBtRange(btId);
-    const title = action === "open-doc" ? `${btId} — ${type}` : btId;
-    const subtitle = (state.pdfName ? state.pdfName + " • " : "") + (range ? `p.${range.start}→${range.end}` : "");
-
-    if (action === "open-bt") {
-      openViewer({ page: range?.start || 1, title, subtitle, btId, range });
-    }
-    if (action === "open-doc") {
-      openViewer({ page: Number.isFinite(page) ? page : (range?.start || 1), title, subtitle, btId, range });
-    }
-  };
-
-  const grid = $("btGrid");
-  if (grid) grid.addEventListener("click", handleBtClick);
-
-  const briefList = $("briefList");
-  if (briefList) briefList.addEventListener("click", handleBtClick);
-
-  // Modal: close
-  document.addEventListener("click", (e) => {
-    const close = e.target.closest("[data-close='1']");
-    if (!close) return;
-    closeViewer();
+  // Layout switch (grid/timeline)
+  document.querySelectorAll(".seg__btn[data-layout]").forEach(b => {
+    b.addEventListener("click", () => {
+      const layout = b.getAttribute("data-layout");
+      state.layout = layout;
+      
+      // Update button states
+      document.querySelectorAll(".seg__btn[data-layout]").forEach(btn => {
+        btn.classList.toggle("seg__btn--active", btn.getAttribute("data-layout") === layout);
+      });
+      
+      renderAll();
+    });
   });
-
-  // Modal: prev/next/export
-  const prev = $("btnPrevPage");
-  if (prev) {
-    prev.addEventListener("click", async () => {
-      state.viewer.page = Math.max(1, state.viewer.page - 1);
-      await renderViewerPage(state.viewer.page);
-      syncViewerButtons();
-    });
-  }
-
-  const next = $("btnNextPage");
-  if (next) {
-    next.addEventListener("click", async () => {
-      state.viewer.page = Math.min(state.totalPages || 1, state.viewer.page + 1);
-      await renderViewerPage(state.viewer.page);
-      syncViewerButtons();
-    });
-  }
-
-  const exp = $("btnExportBt");
-  if (exp) {
-    exp.addEventListener("click", exportCurrentBt);
-  }
-
-  // Modal: ESC
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && state.viewer.isOpen) closeViewer();
-  });
-
-  // Fullscreen
-  const fs = $("btnFullscreen");
-  if (fs) {
-    fs.addEventListener("click", async () => {
-      try {
-        if (!document.fullscreenElement) {
-          await document.documentElement.requestFullscreen();
-        } else {
-          await document.exitFullscreen();
-        }
-      } catch (e) {
-        console.error(e);
-      }
-    });
-  }
 
   // Import PDF
   const input = $("pdfFile");
@@ -823,8 +904,7 @@ function wireEvents() {
         state.totalPages = state.pdf.numPages;
 
         console.log("[DEMAT-BT] PDF chargé ✅", state.totalPages, "pages");
-        setPdfStatus(`${f.name} — ${state.totalPages} pages`);
-        setProgress(0, `PDF chargé (${state.totalPages} pages). Clique sur Extraire.`);
+        setProgress(0, `PDF chargé (${state.totalPages} pages).`);
         setExtractEnabled(true);
       } catch (e) {
         console.error(e);
@@ -840,7 +920,7 @@ function wireEvents() {
   if (btn) {
     btn.addEventListener("click", async () => {
       try {
-        if (!state.pdf) { setProgress(0, "Choisis d’abord un PDF."); return; }
+        if (!state.pdf) { setProgress(0, "Choisis d'abord un PDF."); return; }
         setExtractEnabled(false);
         setProgress(0, "Extraction en cours…");
         await extractAll();
@@ -852,6 +932,48 @@ function wireEvents() {
       }
     });
   }
+
+  // Modal close
+  const modal = $("modal");
+  if (modal) {
+    modal.addEventListener("click", (e) => {
+      if (e.target.hasAttribute("data-close") || e.target.classList.contains("modal__backdrop")) {
+        closeModal();
+      }
+    });
+  }
+
+  // Modal navigation
+  const btnPrev = $("btnPrevPage");
+  if (btnPrev) btnPrev.addEventListener("click", prevPage);
+
+  const btnNext = $("btnNextPage");
+  if (btnNext) btnNext.addEventListener("click", nextPage);
+
+  // Modal export
+  const btnExport = $("btnExportBt");
+  if (btnExport) btnExport.addEventListener("click", exportBTPDF);
+
+  // Fullscreen
+  const btnFS = $("btnFullscreen");
+  if (btnFS) {
+    btnFS.addEventListener("click", () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+      } else {
+        document.exitFullscreen();
+      }
+    });
+  }
+
+  // Keyboard navigation dans modal
+  document.addEventListener("keydown", (e) => {
+    if (!state.modal.open) return;
+    
+    if (e.key === "ArrowLeft") prevPage();
+    if (e.key === "ArrowRight") nextPage();
+    if (e.key === "Escape") closeModal();
+  });
 }
 
 // -------------------------
