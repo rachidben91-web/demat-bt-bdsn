@@ -123,7 +123,7 @@ function updateTopbarClock() {
   const main = $("tbDateTime");
   if (!main) return;
   const now = new Date();
-  main.textContent = `Journée du ${formatDateFR(now)} — ${formatTimeFR(now)}`;
+  main.textContent = `${formatDateFR(now)} — ${formatTimeFR(now)}`;
   // meta stays whatever status message is
 }
 
