@@ -683,8 +683,8 @@ body{
 
 .chip{
   border:1.5px solid var(--line);
-  background:#fff;
-  color:var(--muted);
+  background: rgba(255,255,255,0.06);
+  color: var(--txt-light);
   padding:8px 13px;
   border-radius:999px;
   cursor:pointer;
@@ -695,16 +695,16 @@ body{
 }
 
 .chip:hover{
-  border-color:var(--line-strong);
-  background:#fbfcfe;
-  transform:translateY(-1px);
+  border-color: var(--line-strong);
+  background: rgba(255,255,255,0.10);
+  transform: translateY(-1px);
 }
 
 .chip--active{
-  background: linear-gradient(135deg, var(--txt) 0%, #334155 100%);
-  color:#fff;
-  border-color:var(--txt);
-  box-shadow:var(--shadow-sm);
+  background: rgba(43,108,255,0.22);
+  color: var(--txt);
+  border-color: rgba(43,108,255,0.45);
+  box-shadow: var(--shadow-sm);
 }
 
 /* =====================
