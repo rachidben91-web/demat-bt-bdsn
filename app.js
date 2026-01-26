@@ -210,65 +210,78 @@ function classifyIntervention(bt) {
 }
 
 // -------------------------
+// Formater la durée pour l'affichage
+// -------------------------
+function formatDuree(dureeText) {
+  if (!dureeText) return null;
+  
+  // Format GRDF : "DUREE 01h00 13h00 - 14h00"
+  // Extraire juste la durée et les horaires
+  const grdfPattern = /DUREE\s+(\d{1,2}h\d{2})\s+(\d{1,2}h\d{2}\s*[-–]\s*\d{1,2}h\d{2})/i;
+  const match = dureeText.match(grdfPattern);
+  
+  if (match) {
+    return `${match[2]} (${match[1]})`;
+  }
+  
+  // Sinon retourner tel quel nettoyé
+  return dureeText.replace(/^DUREE\s+/i, '');
+}
+
+// -------------------------
 // Extraction des heures de début et fin
 // -------------------------
 function extractTimeSlot(bt) {
-  const desi = bt.designation || "";
   const duree = bt.duree || "";
+  const desi = bt.designation || "";
   
-  // Pattern complet : 07h30 - 16h30 ou 7h30 - 16h30 ou 07:30 - 16:30
-  const fullTimePattern = /(\d{1,2})[:h](\d{2})\s*[-–]\s*(\d{1,2})[:h](\d{2})/i;
-  const fullMatch = desi.match(fullTimePattern);
+  // Format GRDF : "DUREE 01h00 13h00 - 14h00" ou "DUREE 04h00 08h00 - 12h00"
+  // Pattern : DUREE [durée] [heure_début] - [heure_fin]
+  const grdfPattern = /DUREE\s+\d{1,2}h\d{2}\s+(\d{1,2})h(\d{2})\s*[-–]\s*(\d{1,2})h(\d{2})/i;
+  const grdfMatch = duree.match(grdfPattern);
   
-  if (fullMatch) {
-    // On a trouvé les deux heures dans DESIGNATION
-    const startHour = parseInt(fullMatch[1]);
-    const startMin = parseInt(fullMatch[2]);
-    const endHour = parseInt(fullMatch[3]);
-    const endMin = parseInt(fullMatch[4]);
+  if (grdfMatch) {
+    const startHour = parseInt(grdfMatch[1]);
+    const startMin = parseInt(grdfMatch[2]);
+    const endHour = parseInt(grdfMatch[3]);
+    const endMin = parseInt(grdfMatch[4]);
     
     return {
       start: startHour + startMin / 60,
       end: endHour + endMin / 60,
-      text: `${fullMatch[1]}h${fullMatch[2]} - ${fullMatch[3]}h${fullMatch[4]}`
+      text: `${grdfMatch[1]}h${grdfMatch[2]} - ${grdfMatch[3]}h${grdfMatch[4]}`
     };
   }
   
-  // Essayer d'extraire juste l'heure de début + utiliser DUREE
-  const startPattern = /(\d{1,2})[:h](\d{2})/i;
-  const startMatch = desi.match(startPattern);
+  // Essayer le format simple dans DUREE : "08h00 - 12h00"
+  const simplePattern = /(\d{1,2})h(\d{2})\s*[-–]\s*(\d{1,2})h(\d{2})/i;
+  const simpleMatch = duree.match(simplePattern);
   
-  // Pattern durée : 8h00, 2h30, etc.
-  const dureePattern = /(\d{1,2})[:h](\d{2})/i;
-  const dureeMatch = duree.match(dureePattern);
-  
-  if (startMatch && dureeMatch) {
-    const startHour = parseInt(startMatch[1]);
-    const startMin = parseInt(startMatch[2]);
-    const dureeHour = parseInt(dureeMatch[1]);
-    const dureeMin = parseInt(dureeMatch[2]);
-    
-    const start = startHour + startMin / 60;
-    const duration = dureeHour + dureeMin / 60;
-    const end = start + duration;
+  if (simpleMatch) {
+    const startHour = parseInt(simpleMatch[1]);
+    const startMin = parseInt(simpleMatch[2]);
+    const endHour = parseInt(simpleMatch[3]);
+    const endMin = parseInt(simpleMatch[4]);
     
     return {
-      start: start,
-      end: end,
-      text: `${startMatch[1]}h${startMatch[2]} (${duree})`
+      start: startHour + startMin / 60,
+      end: endHour + endMin / 60,
+      text: `${simpleMatch[1]}h${simpleMatch[2]} - ${simpleMatch[3]}h${simpleMatch[4]}`
     };
   }
   
-  // Si on a juste la durée, on suppose un début à 8h
-  if (dureeMatch) {
-    const dureeHour = parseInt(dureeMatch[1]);
-    const dureeMin = parseInt(dureeMatch[2]);
-    const duration = dureeHour + dureeMin / 60;
+  // Essayer dans DESIGNATION
+  const desiMatch = desi.match(simplePattern);
+  if (desiMatch) {
+    const startHour = parseInt(desiMatch[1]);
+    const startMin = parseInt(desiMatch[2]);
+    const endHour = parseInt(desiMatch[3]);
+    const endMin = parseInt(desiMatch[4]);
     
     return {
-      start: 8,
-      end: 8 + duration,
-      text: `8h00 (${duree})`
+      start: startHour + startMin / 60,
+      end: endHour + endMin / 60,
+      text: `${desiMatch[1]}h${desiMatch[2]} - ${desiMatch[3]}h${desiMatch[4]}`
     };
   }
   
@@ -592,9 +605,10 @@ function renderGrid(filtered, grid) {
     // Meta info
     const metaDiv = document.createElement("div");
     metaDiv.className = "btMeta";
+    const dureeFormatted = formatDuree(bt.duree);
     metaDiv.innerHTML = `
       <div>📅 ${bt.datePrevue || "—"}</div>
-      ${bt.duree ? `<div>⏱️ Durée: ${bt.duree}</div>` : ""}
+      ${dureeFormatted ? `<div>⏱️ ${dureeFormatted}</div>` : ""}
       <div>📋 ${bt.objet || "—"}</div>
       <div>👤 ${bt.client || "—"}</div>
       <div>📍 ${bt.localisation || "—"}</div>
@@ -916,10 +930,11 @@ function renderBrief(filtered) {
 
     const subDiv = document.createElement("div");
     subDiv.className = "briefSub";
+    const dureeFormatted = formatDuree(bt.duree);
     subDiv.innerHTML = `
       <div>📋 ${bt.objet || "—"}</div>
       <div>📅 ${bt.datePrevue || "—"}</div>
-      ${bt.duree ? `<div>⏱️ Durée: ${bt.duree}</div>` : ""}
+      ${dureeFormatted ? `<div>⏱️ ${dureeFormatted}</div>` : ""}
       <div>👤 ${bt.client || "—"}</div>
       <div>📍 ${bt.localisation || "—"}</div>
       ${bt.atNum ? `<div>🧾 ${bt.atNum}</div>` : ""}
