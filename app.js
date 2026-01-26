@@ -1,16 +1,14 @@
-/* app.js
-   DEMAT-BT — Extracteur (GitHub Pages, sans serveur)
-   - Chargement zones.json
-   - Import PDF via input#pdfFile
-   - Bouton Extraire via #btnExtract (activé quand PDF OK)
+/* app.js — DEMAT-BT (GitHub Pages)
+   - zones.json
+   - import PDF via input#pdfFile
+   - extraction BT + docs associés
+   - affichage Référent + Brief (Flip)
 */
 
 const PDF_JS_CDN = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 const PDF_JS_WORKER_CDN = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-
 const DOC_TYPES = ["BT", "AT", "PROC", "PLAN", "PHOTO", "STREET", "DOC"];
 
-// État global
 let ZONES = null;
 
 const state = {
@@ -19,32 +17,54 @@ const state = {
   pdfName: "",
   totalPages: 0,
   bts: [],
-  view: "referent",
-  filters: {
-    q: "",
-    types: new Set(),
-    techId: ""
-  },
+  view: "referent", // "referent" | "brief"
+  filters: { q: "", types: new Set(), techId: "" },
   countsByTechId: new Map()
 };
 
-// Helpers DOM
+// -------------------------
+// DOM helpers (robustes)
+// -------------------------
 const $ = (id) => document.getElementById(id);
 
-// Elements (IDs attendus)
-function elZonesStatus() { return $("zonesStatus"); }
-function elPdfStatus() { return $("pdfStatus"); }
-function elProgMsg() { return $("progMsg"); }
-function elProgBar() { return $("progBar"); }
-function elSearch() { return $("searchInput"); }
-function elTypeChips() { return $("typeChips"); }
-function elTechSelect() { return $("techSelect"); }
-function elResults() { return $("results"); }
+function pickElByIds(ids) {
+  for (const id of ids) {
+    const el = $(id);
+    if (el) return el;
+  }
+  return null;
+}
 
-function elBtnExtract() { return $("btnExtract"); }
-function elPdfInput() { return $("pdfFile"); }
+function elZonesStatus() { return pickElByIds(["zonesStatus", "zones", "zones_state"]); }
+function elPdfStatus() { return pickElByIds(["pdfStatus", "pdf", "pdf_state"]); }
+function elProgMsg() { return pickElByIds(["progMsg", "progressMsg", "status"]); }
+function elProgBar() { return pickElByIds(["progBar", "progressBar"]); }
+function elSearch() { return pickElByIds(["searchInput", "q", "search"]); }
+function elTypeChips() { return pickElByIds(["typeChips", "chipsTypes"]); }
+function elTechSelect() { return pickElByIds(["techSelect", "technicianSelect", "selectTech"]); }
 
-// UI
+// IMPORTANT : zone résultats — on teste plusieurs IDs + fallback querySelector
+function elResults() {
+  return (
+    pickElByIds(["results", "resultats", "btList", "list", "cards", "grid", "mainResults"]) ||
+    document.querySelector('[data-role="results"]') ||
+    document.querySelector(".results") ||
+    document.querySelector("#rightPane") ||
+    null
+  );
+}
+
+function elPdfInput() { return pickElByIds(["pdfFile", "file", "fileInput"]); }
+function elBtnExtract() { return pickElByIds(["btnExtract", "btnExtraire", "extract"]); }
+
+// boutons de vue : <button data-view="referent"> / <button data-view="brief">
+function viewButtons() {
+  return [...document.querySelectorAll("button[data-view]")];
+}
+
+// -------------------------
+// UI helpers
+// -------------------------
 function setZonesStatus(msg) {
   const el = elZonesStatus();
   if (el) el.textContent = msg;
@@ -63,7 +83,23 @@ function setExtractEnabled(enabled) {
   const btn = elBtnExtract();
   if (!btn) return;
   btn.disabled = !enabled;
-  btn.classList.toggle("is-disabled", !enabled);
+}
+
+function ensureResultsContainerMessage() {
+  const root = elResults();
+  if (root) return root;
+
+  console.warn("[DEMAT-BT] Aucune zone résultats trouvée. Ajoute id='results' à la zone de droite.");
+  // Tentative : on met un message dans le body (au cas où)
+  let warn = document.getElementById("dematWarn");
+  if (!warn) {
+    warn = document.createElement("div");
+    warn.id = "dematWarn";
+    warn.style.cssText = "margin:12px;padding:12px;border:1px solid #f59e0b;background:#fff7ed;color:#7c2d12;border-radius:10px;font-family:system-ui;";
+    warn.textContent = "⚠️ Je n’arrive pas à trouver la zone d’affichage des résultats. Dans index.html, mets un id='results' sur la partie droite (liste des BT).";
+    document.body.prepend(warn);
+  }
+  return null;
 }
 
 // -------------------------
@@ -73,7 +109,6 @@ async function loadScriptOnce(src) {
   return new Promise((resolve, reject) => {
     const already = [...document.scripts].some(s => (s.src || "").includes(src));
     if (already) return resolve();
-
     const s = document.createElement("script");
     s.src = src;
     s.onload = () => resolve();
@@ -84,73 +119,48 @@ async function loadScriptOnce(src) {
 
 async function loadPdfJs() {
   if (window.pdfjsLib) return;
-
   await loadScriptOnce(PDF_JS_CDN);
-
-  // Worker
   window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_JS_WORKER_CDN;
 }
 
 async function loadZones() {
-  try {
-    setZonesStatus("Chargement...");
-    const url = `./zones.json?v=${Date.now()}`;
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) throw new Error("zones.json introuvable (404). Vérifie le nom et l’emplacement.");
-    ZONES = await res.json();
-    setZonesStatus("OK");
-    console.log("[DEMAT-BT] zones.json chargé ✅", ZONES);
-    return ZONES;
-  } catch (e) {
-    console.error(e);
-    setZonesStatus("Erreur zones.json");
-    throw e;
-  }
+  setZonesStatus("Chargement...");
+  const url = `./zones.json?v=${Date.now()}`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error("zones.json introuvable (404). Vérifie le nom et l’emplacement.");
+  ZONES = await res.json();
+  setZonesStatus("OK");
+  console.log("[DEMAT-BT] zones.json chargé ✅", ZONES);
+  return ZONES;
 }
 
 // -------------------------
 // Zones utils (bbox)
 // -------------------------
 function getZoneBBox(label) {
-  // support 2 formats :
-  // - { pages: { BT: { LABEL: { bbox: {...} } } } }
-  // - { zones: [ {label, bbox} ] } (fallback)
   if (!ZONES) return null;
 
-  // format pages.BT
   try {
     const bb = ZONES.pages?.BT?.[label]?.bbox;
     if (bb) return bb;
   } catch {}
 
-  // fallback format zones[]
   if (Array.isArray(ZONES.zones)) {
     const z = ZONES.zones.find(x => (x.label || "").toUpperCase() === label.toUpperCase());
     if (z?.bbox) return z.bbox;
   }
-
   return null;
 }
 
 function norm(s) {
-  return (s || "")
-    .replace(/\s+/g, " ")
-    .replace(/[’]/g, "'")
-    .trim();
+  return (s || "").replace(/\s+/g, " ").replace(/[’]/g, "'").trim();
 }
 
-// -------------------------
-// PDF text extraction by bbox
-// -------------------------
 async function extractTextInBBox(page, bbox) {
   if (!bbox) return "";
-
-  // pdf.js coords: item.transform[4]=x, [5]=y in PDF points (origin bottom-left)
   const tc = await page.getTextContent();
   const items = tc.items || [];
-
-  const x0 = bbox.x0, x1 = bbox.x1;
-  const y0 = bbox.y0, y1 = bbox.y1;
+  const { x0, y0, x1, y1 } = bbox;
 
   const picked = [];
   for (const it of items) {
@@ -163,15 +173,14 @@ async function extractTextInBBox(page, bbox) {
       if (str) picked.push({ str, x, y });
     }
   }
-
-  // tri visuel (du haut vers le bas, puis gauche-droite)
   picked.sort((a, b) => (b.y - a.y) || (a.x - b.x));
   return norm(picked.map(p => p.str).join(" "));
 }
 
+// -------------------------
+// Team parsing (REALISATION only)
+// -------------------------
 function parseTeamFromRealisation(text) {
-  // Pattern NNI : 1 lettre + 5 chiffres (ex: A94073)
-  // Dans la zone REALISATION, on a en général "A94073 NOM PRENOM"
   const t = norm(text).toUpperCase();
   const re = /([A-Z]\d{5})\s+([A-ZÀ-Ÿ][A-ZÀ-Ÿ' -]{2,60})/g;
   const out = [];
@@ -189,20 +198,24 @@ function mapTechByNni(nni) {
   return techs.find(t => (t.nni || "").toUpperCase() === (nni || "").toUpperCase()) || null;
 }
 
+function techKey(tech) {
+  return tech ? (tech.id || tech.nni) : null;
+}
+
 // -------------------------
-// Detection BT + association docs
+// Detection BT + docs
 // -------------------------
 function isBTNumber(text) {
   return /BT\d{8,14}/i.test(text || "");
 }
 
-function detectDocTypeFromPageText(text) {
+function detectDocTypeFromHeader(text) {
   const up = (text || "").toUpperCase();
-  if (up.includes("AT N") || up.includes("AUTORISATION DE TRAVAIL")) return "AT";
+  if (up.includes("AUTORISATION") || up.includes("AT N")) return "AT";
   if (up.includes("PROC") || up.includes("PROCEDURE") || up.includes("ORDONNANCEMENT")) return "PROC";
   if (up.includes("PLAN") || up.includes("PLANS")) return "PLAN";
   if (up.includes("PHOTO") || up.includes("PHOTOS")) return "PHOTO";
-  if (up.includes("STREET") || up.includes("STREETVIEW") || up.includes("GOOGLE")) return "STREET";
+  if (up.includes("STREET")) return "STREET";
   return "DOC";
 }
 
@@ -229,59 +242,53 @@ async function extractAll() {
 
   for (let p = 1; p <= state.totalPages; p++) {
     setProgress((p - 1) / state.totalPages * 100, `Analyse page ${p}/${state.totalPages}...`);
-
     const page = await state.pdf.getPage(p);
 
-    // On détecte début BT via la zone BT_NUM
     const btNumTxt = norm(await extractTextInBBox(page, bbBTNUM));
     const isBtPage = isBTNumber(btNumTxt);
 
     if (isBtPage) {
-      // Nouvelle fiche BT
       const objet = norm(await extractTextInBBox(page, bbOBJ));
       const datePrevue = norm(await extractTextInBBox(page, bbDATE));
       const client = norm(await extractTextInBBox(page, bbCLIENT));
       const loc = norm(await extractTextInBBox(page, bbLOC));
-      const atNum = norm(await extractTextInBBox(page, bbAT));
-
+      const atNumTxt = norm(await extractTextInBBox(page, bbAT));
       const realTxt = norm(await extractTextInBBox(page, bbREAL));
-      const team = parseTeamFromRealisation(realTxt);
-
       const desiTxt = norm(await extractTextInBBox(page, bbDESI));
 
+      const id = (btNumTxt.match(/BT\d{8,14}/i) || [""])[0].toUpperCase();
+      const atNum = (atNumTxt.match(/AT\d{3,}/i) || [""])[0].toUpperCase();
+
+      const team = parseTeamFromRealisation(realTxt);
+
       currentBT = {
-        id: (btNumTxt.match(/BT\d{8,14}/i) || [""])[0].toUpperCase(),
+        id,
         pageStart: p,
         objet,
         datePrevue,
         client,
         localisation: loc,
-        atNum: (atNum.match(/AT\d{3,}/i) || [""])[0].toUpperCase(),
-        team,            // basé UNIQUEMENT sur REALISATION
+        atNum,
+        team,
         designation: desiTxt,
-        docs: []         // pages associées
+        docs: [{ page: p, type: "BT" }]
       };
 
-      // La page BT elle-même est un doc BT
-      currentBT.docs.push({ page: p, type: "BT" });
       state.bts.push(currentBT);
 
-      // Comptage par NNI
       for (const member of team) {
         const tech = mapTechByNni(member.nni);
         if (!tech) continue;
-        const key = tech.id || tech.nni;
+        const key = techKey(tech);
         state.countsByTechId.set(key, (state.countsByTechId.get(key) || 0) + 1);
       }
 
       continue;
     }
 
-    // Pages après BT => attachées au BT courant
     if (currentBT) {
-      // petite extraction "haut de page" : on prend OBJET si dispo, sinon texte complet light
       const headerTxt = norm(await extractTextInBBox(page, bbOBJ)) || "";
-      const type = detectDocTypeFromPageText(headerTxt);
+      const type = detectDocTypeFromHeader(headerTxt);
       currentBT.docs.push({ page: p, type });
     }
   }
@@ -291,28 +298,25 @@ async function extractAll() {
 }
 
 // -------------------------
-// UI rendering minimal (liste)
+// UI: chips + tech select
 // -------------------------
 function buildTypeChips() {
   const root = elTypeChips();
   if (!root) return;
-  root.innerHTML = "";
 
+  root.innerHTML = "";
   for (const t of DOC_TYPES) {
     const btn = document.createElement("button");
     btn.className = "chip";
     btn.textContent = t;
-
     btn.addEventListener("click", () => {
       if (state.filters.types.has(t)) state.filters.types.delete(t);
       else state.filters.types.add(t);
-      renderAll();
       syncTypeChipsUI();
+      renderAll();
     });
-
     root.appendChild(btn);
   }
-
   syncTypeChipsUI();
 }
 
@@ -329,19 +333,20 @@ function buildTechSelectWithCounts() {
   const sel = elTechSelect();
   if (!sel) return;
 
-  // On veut UNIQUEMENT les techs qui ont des BT
   const techs = window.TECHNICIANS || [];
   const items = [];
 
   for (const t of techs) {
-    const key = t.id || t.nni;
+    const key = techKey(t);
     const c = state.countsByTechId.get(key) || 0;
     if (c > 0) items.push({ ...t, count: c });
   }
 
   items.sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name, "fr"));
 
+  const current = state.filters.techId || "";
   sel.innerHTML = "";
+
   const optAll = document.createElement("option");
   optAll.value = "";
   optAll.textContent = "— Tous —";
@@ -349,23 +354,24 @@ function buildTechSelectWithCounts() {
 
   for (const t of items) {
     const opt = document.createElement("option");
-    opt.value = t.id || t.nni;
+    opt.value = techKey(t);
     opt.textContent = `${t.name} (${t.count})`;
     sel.appendChild(opt);
   }
+
+  sel.value = current;
 }
 
+// -------------------------
+// Filtering + rendering
+// -------------------------
 function matchesFilters(bt) {
-  // search
   const q = norm(state.filters.q).toUpperCase();
   if (q) {
-    const hay = norm([
-      bt.id, bt.objet, bt.client, bt.localisation, bt.datePrevue
-    ].join(" ")).toUpperCase();
+    const hay = norm([bt.id, bt.objet, bt.client, bt.localisation, bt.datePrevue].join(" ")).toUpperCase();
     if (!hay.includes(q)) return false;
   }
 
-  // types
   if (state.filters.types.size > 0) {
     const typesInBt = new Set(bt.docs.map(d => d.type));
     let ok = false;
@@ -375,13 +381,11 @@ function matchesFilters(bt) {
     if (!ok) return false;
   }
 
-  // tech filter
   if (state.filters.techId) {
     const wanted = state.filters.techId;
     const has = (bt.team || []).some(m => {
       const tech = mapTechByNni(m.nni);
-      const key = tech ? (tech.id || tech.nni) : null;
-      return key === wanted;
+      return techKey(tech) === wanted;
     });
     if (!has) return false;
   }
@@ -390,14 +394,26 @@ function matchesFilters(bt) {
 }
 
 function renderAll() {
-  buildTechSelectWithCounts();
-
-  const root = elResults();
+  const root = ensureResultsContainerMessage();
   if (!root) return;
 
-  root.innerHTML = "";
+  buildTechSelectWithCounts();
+
+  // En mode Brief : on force un tech
+  if (state.view === "brief" && !state.filters.techId) {
+    root.innerHTML = `<div style="padding:18px;color:#6b7280;font-family:system-ui;">
+      ➜ Mode <b>Brief</b> : sélectionne un technicien dans la liste à gauche.
+    </div>`;
+    return;
+  }
 
   const filtered = state.bts.filter(matchesFilters);
+
+  root.innerHTML = "";
+  if (filtered.length === 0) {
+    root.innerHTML = `<div style="padding:18px;color:#6b7280;font-family:system-ui;">Aucun BT à afficher avec ces filtres.</div>`;
+    return;
+  }
 
   for (const bt of filtered) {
     const card = document.createElement("div");
@@ -413,21 +429,27 @@ function renderAll() {
     sub.textContent = bt.objet || "";
     card.appendChild(sub);
 
+    const teamTxt = (bt.team || []).map(m => {
+      const tech = mapTechByNni(m.nni);
+      return tech ? tech.name : `${m.nni}`;
+    }).join(" • ") || "—";
+
     const meta = document.createElement("div");
     meta.className = "bt_meta";
     meta.innerHTML = `
       <div>📅 ${bt.datePrevue || "—"}</div>
       <div>👤 ${bt.client || "—"}</div>
       <div>📍 ${bt.localisation || "—"}</div>
-      <div>👥 ${(bt.team || []).map(m => `${m.nni}`).join(", ") || "—"}</div>
+      <div>👥 ${teamTxt}</div>
       <div>${bt.atNum ? `🧾 ${bt.atNum}` : ""}</div>
     `;
     card.appendChild(meta);
 
-    const chips = document.createElement("div");
-    chips.className = "bt_docchips";
     const counts = {};
     for (const d of bt.docs) counts[d.type] = (counts[d.type] || 0) + 1;
+
+    const chips = document.createElement("div");
+    chips.className = "bt_docchips";
     chips.innerHTML = Object.keys(counts).map(t => `<span class="mini_chip">${t}:${counts[t]}</span>`).join(" ");
     card.appendChild(chips);
 
@@ -436,10 +458,38 @@ function renderAll() {
 }
 
 // -------------------------
-// Wiring (IMPORT + EXTRACT)
+// View switch (Référent / Brief)
+// -------------------------
+function wireViewSwitch() {
+  const btns = viewButtons();
+  if (btns.length === 0) {
+    console.warn("[DEMAT-BT] Aucun bouton data-view trouvé. (Normal si ton HTML n’a pas ce système)");
+    return;
+  }
+
+  const setActive = () => {
+    btns.forEach(b => {
+      const v = b.getAttribute("data-view");
+      b.classList.toggle("seg_btn--active", v === state.view);
+      b.classList.toggle("seg_btn--active", v === state.view);
+    });
+  };
+
+  btns.forEach(b => {
+    b.addEventListener("click", () => {
+      state.view = b.getAttribute("data-view") || "referent";
+      setActive();
+      renderAll();
+    });
+  });
+
+  setActive();
+}
+
+// -------------------------
+// Wiring (Import + Extract)
 // -------------------------
 function wireEvents() {
-  // Search
   const search = elSearch();
   if (search) {
     search.addEventListener("input", (e) => {
@@ -448,7 +498,6 @@ function wireEvents() {
     });
   }
 
-  // Tech select
   const sel = elTechSelect();
   if (sel) {
     sel.addEventListener("change", () => {
@@ -457,11 +506,8 @@ function wireEvents() {
     });
   }
 
-  // PDF input
   const input = elPdfInput();
-  if (!input) {
-    console.warn("[DEMAT-BT] input#pdfFile introuvable.");
-  } else {
+  if (input) {
     input.addEventListener("change", async (e) => {
       const f = e.target.files && e.target.files[0];
       if (!f) return;
@@ -481,9 +527,9 @@ function wireEvents() {
         state.pdf = await loadingTask.promise;
         state.totalPages = state.pdf.numPages;
 
+        console.log("[DEMAT-BT] PDF chargé ✅", state.totalPages, "pages");
         setProgress(0, `PDF chargé (${state.totalPages} pages).`);
         setExtractEnabled(true);
-        console.log("[DEMAT-BT] PDF chargé ✅", state.totalPages, "pages");
       } catch (err) {
         console.error(err);
         setPdfStatus("Erreur PDF");
@@ -491,19 +537,15 @@ function wireEvents() {
         setExtractEnabled(false);
       }
     });
+  } else {
+    console.warn("[DEMAT-BT] input PDF introuvable (id attendu: pdfFile).");
   }
 
-  // Extract button
   const btn = elBtnExtract();
-  if (!btn) {
-    console.warn("[DEMAT-BT] bouton #btnExtract introuvable.");
-  } else {
+  if (btn) {
     btn.addEventListener("click", async () => {
       try {
-        if (!state.pdf) {
-          setProgress(0, "Choisis d’abord un PDF.");
-          return;
-        }
+        if (!state.pdf) { setProgress(0, "Choisis d’abord un PDF."); return; }
         setExtractEnabled(false);
         setProgress(0, "Extraction en cours...");
         await extractAll();
@@ -514,6 +556,8 @@ function wireEvents() {
         setExtractEnabled(!!state.pdf);
       }
     });
+  } else {
+    console.warn("[DEMAT-BT] bouton Extraire introuvable (id attendu: btnExtract).");
   }
 }
 
@@ -528,8 +572,13 @@ async function init() {
 
     buildTypeChips();
     wireEvents();
+    wireViewSwitch();
 
     await loadZones();
+
+    // Affiche un message si pas de container résultats
+    ensureResultsContainerMessage();
+
   } catch (e) {
     console.error(e);
   }
