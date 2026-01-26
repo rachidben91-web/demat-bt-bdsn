@@ -10,18 +10,16 @@
   <header class="topbar">
     <div class="brand">
       <div class="brand__title">DEMAT-BT</div>
-      <div class="brand__sub">Dématérialisation BT — Référent d'équipe</div>
+      <div class="brand__sub">Dématérialisation BT — Référent d’équipe</div>
     </div>
 
     <div class="topbar__actions">
       <label class="btn btn--secondary">
-        <span>📁</span> Importer PDF du jour
+        Importer PDF du jour
         <input id="pdfFile" type="file" accept="application/pdf" hidden />
       </label>
 
-      <button id="btnExtract" class="btn">
-        <span>⚡</span> Extraire
-      </button>
+      <button id="btnExtract" class="btn">Extraire</button>
 
       <div class="seg">
         <button class="seg__btn seg__btn--active" data-view="referent">Référent</button>
@@ -29,7 +27,7 @@
       </div>
 
       <button id="btnFullscreen" class="btn btn--secondary" title="Plein écran">
-        <span>⛶</span> Plein écran
+        Plein écran
       </button>
     </div>
   </header>
@@ -76,13 +74,13 @@
         <select id="techSelect" class="select">
           <option value="">— Tous —</option>
         </select>
-        <div class="hint">Pour le Brief, sélectionne un technicien → ses BT s'affichent.</div>
+        <div class="hint">Pour le Brief, sélectionne un technicien → ses BT s’affichent.</div>
       </div>
 
       <div class="divider"></div>
 
       <div class="hint">
-        Règle : <b>toute page après un BT</b> est rattachée à ce BT <b>jusqu'au BT suivant</b>.
+        Règle : <b>toute page après un BT</b> est rattachée à ce BT <b>jusqu’au BT suivant</b>.
       </div>
     </aside>
 
@@ -92,26 +90,14 @@
       <section id="viewReferent" class="view view--active">
         <div class="row row--space">
           <div>
-            <h2 class="h2">Référent d'équipe</h2>
+            <h2 class="h2">Référent d’équipe</h2>
             <div class="sub">Tous les BT détectés + documents associés (AT, procédure, plan, photo, doc…)</div>
           </div>
 
-          <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-            <div class="kpis" id="kpis"></div>
-            
-            <div class="seg">
-              <button class="seg__btn seg__btn--active" data-layout="grid">
-                <span>◼</span> Vignettes
-              </button>
-              <button class="seg__btn" data-layout="timeline">
-                <span>◐</span> Timeline
-              </button>
-            </div>
-          </div>
+          <div class="kpis" id="kpis"></div>
         </div>
 
         <div id="btGrid" class="grid"></div>
-        <div id="btTimeline" class="timeline" style="display:none;"></div>
       </section>
 
       <!-- Brief view -->
@@ -119,7 +105,7 @@
         <div class="briefHeader">
           <div>
             <h2 class="h2">Brief équipe (Samsung Flip)</h2>
-            <div class="sub">Sélectionne un technicien → ses BT + docs s'affichent instantanément.</div>
+            <div class="sub">Sélectionne un technicien → ses BT + docs s’affichent instantanément.</div>
           </div>
           <div class="briefMeta" id="briefMeta"></div>
         </div>
@@ -138,15 +124,9 @@
             </div>
 
             <div class="modal__actions">
-              <button id="btnPrevPage" class="btn btn--secondary">
-                <span>←</span> Page -
-              </button>
-              <button id="btnNextPage" class="btn btn--secondary">
-                Page + <span>→</span>
-              </button>
-              <button id="btnExportBt" class="btn">
-                <span>💾</span> Exporter BT (PDF)
-              </button>
+              <button id="btnPrevPage" class="btn btn--secondary">Page -</button>
+              <button id="btnNextPage" class="btn btn--secondary">Page +</button>
+              <button id="btnExportBt" class="btn">Exporter BT (PDF)</button>
               <button class="btn btn--secondary" data-close="1">Fermer</button>
             </div>
           </div>
