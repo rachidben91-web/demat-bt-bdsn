@@ -17,6 +17,7 @@ const state = {
   totalPages: 0,
   bts: [],
   view: "referent", // referent | brief
+  layout: "grid", // grid | timeline
   filters: {
     q: "",
     types: new Set(),
@@ -379,8 +380,23 @@ function renderKpis(filtered) {
 // -------------------------
 function renderReferent(filtered) {
   const grid = $("btGrid");
-  if (!grid) return;
+  const timeline = $("btTimeline");
+  
+  if (!grid || !timeline) return;
 
+  // Show/hide based on layout mode
+  if (state.layout === "grid") {
+    grid.style.display = "grid";
+    timeline.style.display = "none";
+    renderGrid(filtered, grid);
+  } else {
+    grid.style.display = "none";
+    timeline.style.display = "flex";
+    renderTimeline(filtered, timeline);
+  }
+}
+
+function renderGrid(filtered, grid) {
   grid.innerHTML = "";
   if (filtered.length === 0) {
     grid.innerHTML = `<div class="hint" style="padding:16px;">Aucun BT à afficher avec ces filtres.</div>`;
@@ -451,6 +467,92 @@ function renderReferent(filtered) {
     card.appendChild(metaDiv);
     card.appendChild(actionsDiv);
     grid.appendChild(card);
+  }
+}
+
+function renderTimeline(filtered, timeline) {
+  timeline.innerHTML = "";
+  if (filtered.length === 0) {
+    timeline.innerHTML = `<div class="hint" style="padding:16px;">Aucun BT à afficher avec ces filtres.</div>`;
+    return;
+  }
+
+  for (const bt of filtered) {
+    const teamTxt = (bt.team || []).map(m => {
+      const tech = mapTechByNni(m.nni);
+      return tech ? tech.name : m.nni;
+    }).join(" • ") || "—";
+
+    // Compter les docs par type
+    const counts = {};
+    for (const d of bt.docs || []) counts[d.type] = (counts[d.type] || 0) + 1;
+
+    const item = document.createElement("div");
+    item.className = "timeline-item";
+
+    const dot = document.createElement("div");
+    dot.className = "timeline-dot";
+
+    const card = document.createElement("div");
+    card.className = "timeline-card";
+
+    // Date badge
+    const dateDiv = document.createElement("div");
+    dateDiv.className = "timeline-date";
+    dateDiv.textContent = bt.datePrevue || "Date non spécifiée";
+
+    // Top section
+    const topDiv = document.createElement("div");
+    topDiv.className = "btTop";
+    
+    const idDiv = document.createElement("div");
+    idDiv.className = "btId";
+    idDiv.textContent = bt.id || "BT ?";
+    
+    const badgesDiv = document.createElement("div");
+    badgesDiv.className = "badges";
+    
+    for (const [type, count] of Object.entries(counts)) {
+      const badge = document.createElement("span");
+      badge.className = type === "BT" ? "badge badge--strong" : "badge";
+      badge.textContent = `${type}:${count}`;
+      badgesDiv.appendChild(badge);
+    }
+    
+    topDiv.appendChild(idDiv);
+    topDiv.appendChild(badgesDiv);
+
+    // Meta
+    const metaDiv = document.createElement("div");
+    metaDiv.className = "btMeta";
+    metaDiv.innerHTML = `
+      <div>📋 ${bt.objet || "—"}</div>
+      <div>👤 ${bt.client || "—"}</div>
+      <div>📍 ${bt.localisation || "—"}</div>
+      <div>👥 ${teamTxt}</div>
+      ${bt.atNum ? `<div>🧾 ${bt.atNum}</div>` : ""}
+    `;
+
+    // Actions
+    const actionsDiv = document.createElement("div");
+    actionsDiv.className = "btActions";
+    
+    for (const doc of bt.docs || []) {
+      const btn = document.createElement("button");
+      btn.className = "btn btn--secondary";
+      btn.textContent = `${doc.type} (p.${doc.page})`;
+      btn.addEventListener("click", () => openModal(bt, doc.page));
+      actionsDiv.appendChild(btn);
+    }
+
+    card.appendChild(dateDiv);
+    card.appendChild(topDiv);
+    card.appendChild(metaDiv);
+    card.appendChild(actionsDiv);
+
+    item.appendChild(dot);
+    item.appendChild(card);
+    timeline.appendChild(item);
   }
 }
 
@@ -698,6 +800,21 @@ function wireEvents() {
   document.querySelectorAll(".seg__btn[data-view]").forEach(b => {
     b.addEventListener("click", () => {
       setView(b.getAttribute("data-view"));
+    });
+  });
+
+  // Layout switch (grid/timeline)
+  document.querySelectorAll(".seg__btn[data-layout]").forEach(b => {
+    b.addEventListener("click", () => {
+      const layout = b.getAttribute("data-layout");
+      state.layout = layout;
+      
+      // Update button states
+      document.querySelectorAll(".seg__btn[data-layout]").forEach(btn => {
+        btn.classList.toggle("seg__btn--active", btn.getAttribute("data-layout") === layout);
+      });
+      
+      renderAll();
     });
   });
 
