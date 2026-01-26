@@ -69,6 +69,74 @@ function safeUpper(s) {
   return norm(s).toUpperCase();
 }
 
+
+
+// -------------------------
+// Topbar clock + status (Temps réel)
+// -------------------------
+const TOPBAR_STATUS = {
+  WAIT:  { cls: "tbDot--wait",  label: "En attente du PDF" },
+  LOADED:{ cls: "tbDot--loaded",label: "PDF chargé" },
+  DONE:  { cls: "tbDot--done",  label: "BT extraits" },
+  ERROR: { cls: "tbDot--error", label: "Erreur" }
+};
+
+function formatDateFR(d) {
+  // Ex: "lundi 26 janvier 2026"
+  try {
+    return d.toLocaleDateString("fr-FR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  } catch {
+    // fallback
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`;
+  }
+}
+
+function formatTimeFR(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function setTopbarStatus(kind, titleOverride) {
+  const dot = $("tbDot");
+  if (!dot) return;
+
+  // remove known classes
+  dot.classList.remove(
+    TOPBAR_STATUS.WAIT.cls,
+    TOPBAR_STATUS.LOADED.cls,
+    TOPBAR_STATUS.DONE.cls,
+    TOPBAR_STATUS.ERROR.cls
+  );
+
+  const entry = TOPBAR_STATUS[kind] || TOPBAR_STATUS.WAIT;
+  dot.classList.add(entry.cls);
+  dot.title = titleOverride || entry.label;
+}
+
+function setTopbarMeta(text) {
+  const meta = $("tbMeta");
+  if (meta) meta.textContent = text || "";
+}
+
+function updateTopbarClock() {
+  const main = $("tbDateTime");
+  if (!main) return;
+  const now = new Date();
+  main.textContent = `Journée du ${formatDateFR(now)} — ${formatTimeFR(now)}`;
+  // meta stays whatever status message is
+}
+
+function startTopbarClock() {
+  updateTopbarClock();
+  // refresh every minute (align to minute boundary)
+  const now = new Date();
+  const msToNextMinute = (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
+  setTimeout(() => {
+    updateTopbarClock();
+    setInterval(updateTopbarClock, 60 * 1000);
+  }, Math.max(250, msToNextMinute));
+}
 // -------------------------
 // Load zones.json
 // -------------------------
@@ -394,6 +462,9 @@ async function extractAll() {
 
   setProgress(100, `Terminé : ${state.bts.length} BT détectés.`);
   console.log("[DEMAT-BT] Extraction OK ✅", state.bts.length, "BT");
+  // Statut topbar
+  setTopbarStatus('DONE');
+  setTopbarMeta(`BT extraits : ${state.bts.length}`);
   renderAll();
 }
 
@@ -1252,9 +1323,15 @@ function wireEvents() {
         console.log("[DEMAT-BT] PDF chargé ✅", state.totalPages, "pages");
         setProgress(0, `PDF chargé (${state.totalPages} pages).`);
         setExtractEnabled(true);
+
+        // Statut topbar
+        setTopbarStatus('LOADED', f.name);
+        setTopbarMeta('PDF chargé — prêt à extraire');
       } catch (e) {
         console.error(e);
         setPdfStatus("Erreur PDF");
+        setTopbarStatus('ERROR', "Erreur chargement PDF");
+        setTopbarMeta("Erreur PDF");
         setProgress(0, "Erreur chargement PDF (voir console).");
         setExtractEnabled(false);
       }
@@ -1330,6 +1407,11 @@ async function init() {
     setPdfStatus("Aucun PDF chargé");
     setProgress(0, "Prêt.");
     setExtractEnabled(false);
+
+    // Temps réel (topbar) + statut
+    startTopbarClock();
+    setTopbarStatus('WAIT');
+    setTopbarMeta('En attente du PDF');
 
     buildTypeChips();
     wireEvents();
