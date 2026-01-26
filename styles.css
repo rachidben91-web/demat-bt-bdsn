@@ -1,15 +1,15 @@
 :root{
-  /* Colors */
-  --bg:#f4f6fb;
-  --card:#ffffff;
+  /* Colors (dark) */
+  --bg:#0b1220;
+  --card: rgba(255,255,255,0.06);
 
-  --txt:#0f172a;
-  --txt-light:#334155;
-  --muted:#64748b;
-  --muted-light:#94a3b8;
+  --txt:#e6eefc;
+  --txt-light:#c9d7f3;
+  --muted:#9fb0cf;
+  --muted-light:#6f85ad;
 
-  --line:#e3e9f3;
-  --line-strong:#cfd8e6;
+  --line: rgba(255,255,255,0.08);
+  --line-strong: rgba(255,255,255,0.14);
 
   /* Primary palette */
   --primary:#2563eb;
@@ -45,12 +45,14 @@
 
 body{
   margin:0;
-  background: var(--bg);
-  background-image:
-    radial-gradient(at 0% 0%, rgba(37,99,235,0.03) 0px, transparent 55%),
-    radial-gradient(at 100% 0%, rgba(16,185,129,0.025) 0px, transparent 55%);
   color:var(--txt);
   line-height:1.6;
+
+  background:
+    radial-gradient(1000px 600px at 30% -10%, rgba(43,108,255,0.18), transparent 55%),
+    radial-gradient(900px 520px at 110% 0%, rgba(34,197,94,0.12), transparent 55%),
+    linear-gradient(180deg, #0b1220, #0f172a);
+
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
