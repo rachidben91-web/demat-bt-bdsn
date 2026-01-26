@@ -404,11 +404,10 @@ body{
    ===================== */
 .timeline{
   margin-top:16px;
+}
+
+.timeline > div:first-child{
   overflow-x:auto;
-  background:#fff;
-  border-radius:var(--radius);
-  border:1.5px solid var(--line);
-  box-shadow:var(--shadow);
 }
 
 .timeline::-webkit-scrollbar{ height:10px; }
@@ -423,6 +422,11 @@ body{
 .timeline-grid{
   display:grid;
   min-width:1200px;
+}
+
+.timeline-bt-block{
+  position: relative;
+  z-index: 1;
 }
 
 .timeline-header{

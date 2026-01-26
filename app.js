@@ -171,7 +171,7 @@ function classifyIntervention(bt) {
       objet.includes("MES") ||
       objet.includes("COMPTEUR") ||
       objet.includes("POSTE CLIENT")) {
-    return { category: "CLIENTELE", color: "#2563eb", icon: "🟦" };
+    return { category: "CLIENTELE", label: "MHS/MES", color: "#2563eb", icon: "🟦" };
   }
   
   // Maintenance (vert)
@@ -180,7 +180,7 @@ function classifyIntervention(bt) {
       objet.includes("CICM") ||
       objet.includes("ROBINET") ||
       objet.includes("PREVENTIF")) {
-    return { category: "MAINTENANCE", color: "#10b981", icon: "🟩" };
+    return { category: "MAINTENANCE", label: "MAINT CI-CM", color: "#10b981", icon: "🟩" };
   }
   
   // Surveillance (orange)
@@ -188,9 +188,13 @@ function classifyIntervention(bt) {
       objet.includes("ADF") ||
       objet.includes("SUIVI") ||
       objet.includes("ALERTE") ||
-      objet.includes("FUITE") ||
-      objet.includes("LOCALISATION")) {
-    return { category: "SURVEILLANCE", color: "#f59e0b", icon: "🟧" };
+      objet.includes("FUITE")) {
+    return { category: "SURVEILLANCE", label: "SURVEILLANCE", color: "#f59e0b", icon: "🟧" };
+  }
+  
+  // Localisation (orange foncé)
+  if (objet.includes("LOCALISATION")) {
+    return { category: "LOCALISATION", label: "LOCALISATION", color: "#ea580c", icon: "🟧" };
   }
   
   // Administratif (violet)
@@ -198,11 +202,39 @@ function classifyIntervention(bt) {
       objet.includes("DIVERS") ||
       objet.includes("ADMINISTRATIF") ||
       objet.includes("FORMATION")) {
-    return { category: "ADMINISTRATIF", color: "#a855f7", icon: "🟪" };
+    return { category: "ADMINISTRATIF", label: "ADMINISTRATIF", color: "#a855f7", icon: "🟪" };
   }
   
   // Autre (gris)
-  return { category: "AUTRE", color: "#64748b", icon: "⬛" };
+  return { category: "AUTRE", label: "AUTRE", color: "#64748b", icon: "⬛" };
+}
+
+// -------------------------
+// Extraction des heures de début et fin
+// -------------------------
+function extractTimeSlot(bt) {
+  // Essayer d'extraire depuis la désignation
+  const desi = bt.designation || "";
+  
+  // Pattern : 07h30 - 16h30 ou 7h30 - 16h30 ou 07:30 - 16:30
+  const timePattern = /(\d{1,2})[:h](\d{2})\s*[-–]\s*(\d{1,2})[:h](\d{2})/i;
+  const match = desi.match(timePattern);
+  
+  if (match) {
+    const startHour = parseInt(match[1]);
+    const startMin = parseInt(match[2]);
+    const endHour = parseInt(match[3]);
+    const endMin = parseInt(match[4]);
+    
+    return {
+      start: startHour + startMin / 60,
+      end: endHour + endMin / 60,
+      text: `${match[1]}h${match[2]} - ${match[3]}h${match[4]}`
+    };
+  }
+  
+  // Sinon, retourner une durée par défaut (2h)
+  return null;
 }
 
 // -------------------------
@@ -467,31 +499,39 @@ function renderGrid(filtered, grid) {
 
     const card = document.createElement("div");
     card.className = "card btCard";
-    card.style.position = "relative";
-    
-    // Pastille de catégorie en haut à droite
-    const categoryBadge = document.createElement("div");
-    categoryBadge.className = "category-badge";
-    categoryBadge.style.cssText = `
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      background: ${classification.color};
-      box-shadow: 0 2px 8px ${classification.color}40;
-      border: 2px solid #fff;
-    `;
-    categoryBadge.title = classification.category;
     
     // Top section avec ID et badges
     const topDiv = document.createElement("div");
     topDiv.className = "btTop";
     
+    const leftSection = document.createElement("div");
+    leftSection.style.display = "flex";
+    leftSection.style.flexDirection = "column";
+    leftSection.style.gap = "6px";
+    
     const idDiv = document.createElement("div");
     idDiv.className = "btId";
     idDiv.textContent = bt.id || "BT ?";
+    
+    // Badge de catégorie bien visible
+    const categoryBadge = document.createElement("div");
+    categoryBadge.className = "category-label";
+    categoryBadge.style.cssText = `
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      background: ${classification.color};
+      color: #fff;
+      box-shadow: 0 2px 8px ${classification.color}40;
+    `;
+    categoryBadge.textContent = classification.label;
+    
+    leftSection.appendChild(idDiv);
+    leftSection.appendChild(categoryBadge);
     
     const badgesDiv = document.createElement("div");
     badgesDiv.className = "badges";
@@ -504,7 +544,7 @@ function renderGrid(filtered, grid) {
       badgesDiv.appendChild(badge);
     }
     
-    topDiv.appendChild(idDiv);
+    topDiv.appendChild(leftSection);
     topDiv.appendChild(badgesDiv);
     
     // Meta info
@@ -532,7 +572,6 @@ function renderGrid(filtered, grid) {
       actionsDiv.appendChild(btn);
     }
     
-    card.appendChild(categoryBadge);
     card.appendChild(topDiv);
     card.appendChild(metaDiv);
     card.appendChild(actionsDiv);
@@ -551,11 +590,11 @@ function renderTimeline(filtered, timeline) {
   // Définir les heures de travail (8h-18h)
   const hours = [];
   for (let h = 8; h <= 17; h++) {
-    hours.push(`${h}h-${h+1}h`);
+    hours.push({ start: h, end: h + 1, label: `${h}h-${h+1}h` });
   }
 
   // Récupérer tous les techniciens qui ont des BT
-  const techSet = new Map(); // Map<techId, techName>
+  const techSet = new Map();
   for (const bt of filtered) {
     for (const member of bt.team || []) {
       const tech = mapTechByNni(member.nni);
@@ -578,13 +617,17 @@ function renderTimeline(filtered, timeline) {
     a[1].localeCompare(b[1])
   );
 
-  // Créer la grille
+  // Créer la grille avec positionnement absolu pour les blocs
+  const container = document.createElement("div");
+  container.style.cssText = "position:relative; overflow-x:auto; background:#fff; border-radius:var(--radius); border:1.5px solid var(--line); box-shadow:var(--shadow);";
+
   const grid = document.createElement("div");
   grid.className = "timeline-grid";
   grid.style.gridTemplateColumns = `180px repeat(${hours.length}, minmax(100px, 1fr))`;
-  grid.style.gridTemplateRows = `50px repeat(${techs.length}, auto)`;
+  grid.style.gridTemplateRows = `50px repeat(${techs.length}, 70px)`;
+  grid.style.position = "relative";
 
-  // Header: coin + heures
+  // Header
   const header = document.createElement("div");
   header.className = "timeline-header";
 
@@ -597,14 +640,14 @@ function renderTimeline(filtered, timeline) {
     const hourCell = document.createElement("div");
     hourCell.className = "timeline-hour";
     hourCell.style.gridColumn = i + 2;
-    hourCell.textContent = hours[i];
+    hourCell.textContent = hours[i].label;
     header.appendChild(hourCell);
   }
 
   grid.appendChild(header);
 
   // Créer une map BT par technicien
-  const btsByTech = new Map(); // Map<techId, BT[]>
+  const btsByTech = new Map();
   for (const bt of filtered) {
     for (const member of bt.team || []) {
       const tech = mapTechByNni(member.nni);
@@ -618,11 +661,8 @@ function renderTimeline(filtered, timeline) {
     }
   }
 
-  // Lignes: techniciens + cellules
+  // Lignes: techniciens + cellules vides (les BT seront en position absolue)
   techs.forEach(([techId, techName], techIdx) => {
-    const row = document.createElement("div");
-    row.className = "timeline-row";
-
     // Nom du technicien
     const techCell = document.createElement("div");
     techCell.className = "timeline-tech";
@@ -639,60 +679,112 @@ function renderTimeline(filtered, timeline) {
     
     techCell.appendChild(avatar);
     techCell.appendChild(nameDiv);
-    row.appendChild(techCell);
+    grid.appendChild(techCell);
 
-    // Cellules pour chaque heure avec meilleure distribution
-    const techBTs = btsByTech.get(techId) || [];
-    
-    // Distribution intelligente : répartir les BT uniformément sur la journée
-    const distribution = Array(hours.length).fill(null).map(() => []);
-    
-    techBTs.forEach((bt, idx) => {
-      // Calculer l'index de la cellule en fonction de la position du BT
-      const cellIdx = Math.floor((idx / techBTs.length) * hours.length);
-      const targetIdx = Math.min(cellIdx, hours.length - 1);
-      distribution[targetIdx].push(bt);
-    });
-    
+    // Cellules vides
     for (let hourIdx = 0; hourIdx < hours.length; hourIdx++) {
       const cell = document.createElement("div");
       cell.className = "timeline-cell";
       cell.style.gridRow = techIdx + 2;
       cell.style.gridColumn = hourIdx + 2;
-
-      const cellBTs = distribution[hourIdx];
-
-      for (const bt of cellBTs) {
-        const classification = classifyIntervention(bt);
-        
-        const btDiv = document.createElement("div");
-        btDiv.className = `timeline-bt`;
-        btDiv.style.borderLeft = `4px solid ${classification.color}`;
-        btDiv.style.background = `linear-gradient(90deg, ${classification.color}15 0%, #fff 100%)`;
-        
-        const idDiv = document.createElement("div");
-        idDiv.className = "timeline-bt-id";
-        idDiv.textContent = bt.id;
-        
-        const typeDiv = document.createElement("div");
-        typeDiv.className = "timeline-bt-desc";
-        typeDiv.textContent = classification.category;
-        
-        btDiv.appendChild(idDiv);
-        btDiv.appendChild(typeDiv);
-        
-        btDiv.addEventListener("click", () => openModal(bt, bt.pageStart));
-        
-        cell.appendChild(btDiv);
-      }
-
-      row.appendChild(cell);
+      grid.appendChild(cell);
     }
 
-    grid.appendChild(row);
+    // Ajouter les BT pour ce technicien
+    const techBTs = btsByTech.get(techId) || [];
+    
+    techBTs.forEach(bt => {
+      const timeSlot = extractTimeSlot(bt);
+      const classification = classifyIntervention(bt);
+      
+      let startCol, colSpan;
+      
+      if (timeSlot) {
+        // Utiliser les heures réelles
+        const startHour = timeSlot.start;
+        const endHour = timeSlot.end;
+        
+        // Calculer la colonne de début (8h = col 2, 9h = col 3, etc.)
+        startCol = Math.max(2, Math.floor(startHour - 8) + 2);
+        const endCol = Math.min(hours.length + 1, Math.ceil(endHour - 8) + 2);
+        colSpan = Math.max(1, endCol - startCol);
+      } else {
+        // Pas d'horaire trouvé, placer de manière aléatoire sur 2 créneaux
+        const randStart = Math.floor(Math.random() * (hours.length - 1));
+        startCol = randStart + 2;
+        colSpan = 2;
+      }
+      
+      const btDiv = document.createElement("div");
+      btDiv.className = "timeline-bt-block";
+      btDiv.style.cssText = `
+        grid-row: ${techIdx + 2};
+        grid-column: ${startCol} / span ${colSpan};
+        background: ${classification.color}20;
+        border: 2px solid ${classification.color};
+        border-radius: var(--radius-xs);
+        padding: 6px 8px;
+        cursor: pointer;
+        transition: var(--transition);
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-height: 50px;
+        justify-content: center;
+      `;
+      
+      const idDiv = document.createElement("div");
+      idDiv.style.cssText = `
+        font-weight: 800;
+        font-size: 11px;
+        color: ${classification.color};
+        line-height: 1.2;
+      `;
+      idDiv.textContent = bt.id;
+      
+      const typeDiv = document.createElement("div");
+      typeDiv.style.cssText = `
+        font-size: 9px;
+        font-weight: 700;
+        color: ${classification.color};
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        line-height: 1.2;
+      `;
+      typeDiv.textContent = classification.label;
+      
+      if (timeSlot && colSpan >= 3) {
+        const timeDiv = document.createElement("div");
+        timeDiv.style.cssText = `
+          font-size: 8px;
+          color: ${classification.color}CC;
+          margin-top: 2px;
+        `;
+        timeDiv.textContent = timeSlot.text;
+        btDiv.appendChild(timeDiv);
+      }
+      
+      btDiv.appendChild(idDiv);
+      btDiv.appendChild(typeDiv);
+      
+      btDiv.addEventListener("click", () => openModal(bt, bt.pageStart));
+      btDiv.addEventListener("mouseenter", () => {
+        btDiv.style.transform = "translateY(-2px)";
+        btDiv.style.boxShadow = "var(--shadow)";
+        btDiv.style.zIndex = "10";
+      });
+      btDiv.addEventListener("mouseleave", () => {
+        btDiv.style.transform = "translateY(0)";
+        btDiv.style.boxShadow = "none";
+        btDiv.style.zIndex = "1";
+      });
+      
+      grid.appendChild(btDiv);
+    });
   });
 
-  timeline.appendChild(grid);
+  container.appendChild(grid);
+  timeline.appendChild(container);
 }
 
 // -------------------------
@@ -723,12 +815,39 @@ function renderBrief(filtered) {
   }
 
   for (const bt of filtered) {
+    const classification = classifyIntervention(bt);
+    
     const card = document.createElement("div");
     card.className = "card briefCard";
 
     const titleDiv = document.createElement("div");
-    titleDiv.className = "briefTitle";
-    titleDiv.textContent = bt.id;
+    titleDiv.style.display = "flex";
+    titleDiv.style.alignItems = "center";
+    titleDiv.style.gap = "12px";
+    titleDiv.style.marginBottom = "10px";
+    
+    const idSpan = document.createElement("div");
+    idSpan.className = "briefTitle";
+    idSpan.style.margin = "0";
+    idSpan.textContent = bt.id;
+    
+    const categoryBadge = document.createElement("div");
+    categoryBadge.style.cssText = `
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      background: ${classification.color};
+      color: #fff;
+      box-shadow: 0 2px 8px ${classification.color}40;
+    `;
+    categoryBadge.textContent = classification.label;
+    
+    titleDiv.appendChild(idSpan);
+    titleDiv.appendChild(categoryBadge);
 
     const subDiv = document.createElement("div");
     subDiv.className = "briefSub";
