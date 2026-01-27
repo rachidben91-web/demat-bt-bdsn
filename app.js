@@ -619,19 +619,29 @@ function renderGrid(filtered, grid) {
     // Actions (boutons pour voir les docs)
     const actionsDiv = document.createElement("div");
     actionsDiv.className = "btActions";
+    actionsDiv.style.cssText = "display:flex; gap:6px; flex-wrap:wrap; margin-top:12px;";
     
     // Créer un bouton pour chaque document
     for (const doc of bt.docs || []) {
       const btn = document.createElement("button");
-      btn.className = "btn btn--secondary";
+      btn.className = "docBadge";
       btn.textContent = `${doc.type} (p.${doc.page})`;
-      btn.addEventListener("click", () => openModal(bt, doc.page));
+      btn.style.cursor = "pointer";
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openModal(bt, doc.page);
+      });
       actionsDiv.appendChild(btn);
     }
     
     card.appendChild(topDiv);
     card.appendChild(metaDiv);
     card.appendChild(actionsDiv);
+    
+    // Rendre toute la carte cliquable pour ouvrir le BT
+    card.style.cursor = "pointer";
+    card.addEventListener("click", () => openModal(bt, bt.pageStart));
+    
     grid.appendChild(card);
   }
 }

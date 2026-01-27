@@ -42,11 +42,11 @@ body {
 /* HEADER               */
 /* ==================== */
 header {
-  background: linear-gradient(135deg, #1a1f2e 0%, #2d3748 100%);
+  background: linear-gradient(135deg, #1e2530 0%, #2d3748 100%);
   color: var(--txt);
   padding: 20px 24px;
-  border-bottom: 2px solid var(--line-strong);
-  box-shadow: var(--shadow);
+  border-bottom: 2px solid var(--accent);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
 }
 
 .headerTop {
@@ -61,12 +61,13 @@ header {
   font-weight: 800;
   letter-spacing: -0.5px;
   color: var(--txt);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
 .headerTop .subtitle {
   font-size: 13px;
-  color: var(--muted);
-  font-weight: 500;
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .headerButtons {
@@ -339,11 +340,18 @@ main {
 .btCard:hover {
   border-color: var(--accent);
   transform: translateY(-4px);
-  box-shadow: var(--shadow);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
 }
 
 .btCard:hover::before {
   opacity: 1;
+}
+
+.btTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
 }
 
 .btHeader {
@@ -354,10 +362,11 @@ main {
 }
 
 .btId {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 800;
-  color: var(--txt);
+  color: var(--accent);
   letter-spacing: -0.3px;
+  text-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
 }
 
 .btBadge {
@@ -371,19 +380,42 @@ main {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
-.btMeta {
-  font-size: 12px;
+.badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 4px 8px;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-xs);
   color: var(--txt-light);
-  line-height: 1.8;
+}
+
+.badge--strong {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.btMeta {
+  font-size: 13px;
+  color: var(--txt-light);
+  line-height: 2;
 }
 
 .btMeta div {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  padding: 2px 0;
 }
 
-.btDocs {
+.btActions {
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
@@ -393,13 +425,22 @@ main {
 }
 
 .docBadge {
-  font-size: 10px;
-  padding: 4px 8px;
+  font-size: 11px;
+  padding: 6px 12px;
   background: var(--bg);
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--line-strong);
   border-radius: var(--radius-xs);
   color: var(--txt-light);
   font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.docBadge:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-1px);
 }
 
 /* ==================== */
