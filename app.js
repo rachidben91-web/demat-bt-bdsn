@@ -644,11 +644,29 @@ function renderTimeline(filtered, timeline) {
     return;
   }
 
-  // Définir les heures (8h à 18h) - une colonne par heure
-  const hours = [];
-  for (let h = 8; h <= 18; h++) {
-    hours.push({ hour: h, label: `${h}h` });
+  // Définir les quarts d'heure (7h30 à 17h00) - une colonne toutes les 15 minutes
+  const timeSlots = [];
+  
+  // Commencer à 7h30
+  timeSlots.push({ time: 7.5, label: "7h30", isHour: false });
+  timeSlots.push({ time: 7.75, label: "45", isHour: false });
+  
+  // Puis de 8h à 16h (heures complètes)
+  for (let h = 8; h <= 16; h++) {
+    for (let m = 0; m < 60; m += 15) {
+      const time = h + m / 60;
+      let label = "";
+      if (m === 0) {
+        label = `${h}h`;
+      } else {
+        label = `${m}`;
+      }
+      timeSlots.push({ time, label, isHour: m === 0 });
+    }
   }
+  
+  // Terminer à 17h00
+  timeSlots.push({ time: 17, label: "17h", isHour: true });
 
   // Récupérer tous les techniciens qui ont des BT
   const techSet = new Map();
@@ -689,13 +707,13 @@ function renderTimeline(filtered, timeline) {
     }
   }
 
-  // Créer la grille - 1 ligne par technicien, 1 colonne par heure
+  // Créer la grille - 1 ligne par technicien, 1 colonne toutes les 15min
   const container = document.createElement("div");
   container.style.cssText = "position:relative; overflow-x:auto; background:#fff; border-radius:var(--radius); border:1.5px solid var(--line); box-shadow:var(--shadow);";
 
   const grid = document.createElement("div");
   grid.className = "timeline-grid";
-  grid.style.gridTemplateColumns = `180px repeat(${hours.length}, minmax(80px, 1fr))`;
+  grid.style.gridTemplateColumns = `180px repeat(${timeSlots.length}, minmax(50px, 1fr))`;
   grid.style.gridTemplateRows = `50px repeat(${techs.length}, 70px)`;
   grid.style.position = "relative";
 
@@ -708,11 +726,15 @@ function renderTimeline(filtered, timeline) {
   corner.textContent = "Techniciens";
   header.appendChild(corner);
 
-  for (let i = 0; i < hours.length; i++) {
+  for (let i = 0; i < timeSlots.length; i++) {
+    const slot = timeSlots[i];
     const hourCell = document.createElement("div");
     hourCell.className = "timeline-hour";
     hourCell.style.gridColumn = i + 2;
-    hourCell.textContent = hours[i].label;
+    hourCell.style.fontSize = slot.isHour ? "11px" : "9px";
+    hourCell.style.fontWeight = slot.isHour ? "700" : "600";
+    hourCell.style.color = slot.isHour ? "var(--txt)" : "var(--muted)";
+    hourCell.textContent = slot.label; // Afficher tous les labels
     header.appendChild(hourCell);
   }
 
@@ -740,12 +762,16 @@ function renderTimeline(filtered, timeline) {
     techCell.appendChild(nameDiv);
     grid.appendChild(techCell);
 
-    // Cellules vides pour chaque heure
-    for (let hourIdx = 0; hourIdx < hours.length; hourIdx++) {
+    // Cellules vides pour chaque quart d'heure
+    for (let slotIdx = 0; slotIdx < timeSlots.length; slotIdx++) {
       const cell = document.createElement("div");
       cell.className = "timeline-cell";
       cell.style.gridRow = rowNum;
-      cell.style.gridColumn = hourIdx + 2;
+      cell.style.gridColumn = slotIdx + 2;
+      // Bordure plus épaisse toutes les heures
+      if (timeSlots[slotIdx].isHour) {
+        cell.style.borderLeft = "2px solid var(--line-strong)";
+      }
       grid.appendChild(cell);
     }
 
@@ -768,27 +794,36 @@ function renderTimeline(filtered, timeline) {
       let startCol, colSpan;
       
       if (timeSlot) {
-        // Utiliser les heures réelles
-        let startHour = Math.max(8, Math.min(18, timeSlot.start));
-        let endHour = Math.max(8, Math.min(18, timeSlot.end));
+        // Utiliser les heures réelles avec précision au quart d'heure
+        let startTime = Math.max(7.5, Math.min(17, timeSlot.start));
+        let endTime = Math.max(7.5, Math.min(17, timeSlot.end));
         
-        // Arrondir aux heures entières
-        const startHourInt = Math.floor(startHour);
-        const endHourInt = Math.ceil(endHour);
+        // Arrondir au quart d'heure le plus proche
+        // 1 quart d'heure = 0.25h
+        const roundToQuarter = (time) => Math.round(time * 4) / 4;
+        startTime = roundToQuarter(startTime);
+        endTime = roundToQuarter(endTime);
         
-        // Calculer la colonne (8h = col 2, 9h = col 3, etc.)
-        startCol = (startHourInt - 8) + 2;
-        const endCol = (endHourInt - 8) + 2;
-        colSpan = Math.max(1, endCol - startCol);
+        // Calculer l'index de colonne (4 colonnes par heure, début à 7h30)
+        // 7h30 = index 0 = col 2
+        // 7h45 = index 1 = col 3
+        // 8h00 = index 2 = col 4
+        // 8h15 = index 3 = col 5
+        // 9h00 = index 6 = col 8
+        const startIdx = Math.round((startTime - 7.5) * 4);
+        const endIdx = Math.round((endTime - 7.5) * 4);
+        
+        startCol = startIdx + 2;
+        colSpan = Math.max(1, endIdx - startIdx);
       } else {
         // Pas d'horaire trouvé, placement automatique équilibré
-        const hoursPerBT = Math.floor(hours.length / (techBTs.length || 1));
-        startCol = btIndex * hoursPerBT + 2;
-        colSpan = Math.max(1, hoursPerBT);
+        const slotsPerBT = Math.floor(timeSlots.length / (techBTs.length || 1));
+        startCol = btIndex * slotsPerBT + 2;
+        colSpan = Math.max(1, slotsPerBT);
         
         // Ne pas dépasser la fin
-        if (startCol + colSpan > hours.length + 2) {
-          startCol = hours.length + 2 - colSpan;
+        if (startCol + colSpan > timeSlots.length + 2) {
+          startCol = timeSlots.length + 2 - colSpan;
         }
       }
       
@@ -835,7 +870,7 @@ function renderTimeline(filtered, timeline) {
       btDiv.appendChild(idDiv);
       btDiv.appendChild(typeDiv);
       
-      if (timeSlot && colSpan >= 2) {
+      if (timeSlot && colSpan >= 4) {
         const timeDiv = document.createElement("div");
         timeDiv.style.cssText = `
           font-size: 8px;
