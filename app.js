@@ -1,1616 +1,359 @@
-/* ==== Compat: techniciens data ==== */
-(function normalizeTechnicians(){
-  // On accepte plusieurs noms de variables selon l'historique du repo.
-  // But: exposer TOUJOURS un tableau dans window.TECHNICIANS
-  const candidates = [
-    window.TECHNICIANS,
-    window.TECHNICIENS,
-    window.technicians,
-    window.techniciens,
-  ].filter(Boolean);
-
-  if (!window.TECHNICIANS) {
-    const first = candidates[0];
-    if (Array.isArray(first)) {
-      window.TECHNICIANS = first;
-    } else if (first && typeof first === "object") {
-      // si c'est un objet { list: [...] } ou { data: [...] }
-      const arr = first.list || first.data || first.items || first.technicians || first.techniciens;
-      window.TECHNICIANS = Array.isArray(arr) ? arr : [];
-    } else {
-      window.TECHNICIANS = [];
-    }
-  }
-
-  // Normalisation légère: champs attendus (nni, name) si existants
-  window.TECHNICIANS = (window.TECHNICIANS || []).map(t => ({
-    ...t,
-    nni: (t.nni || t.NNI || t.id || t.code || "").toString(),
-    name: (t.name || t.nom || t.fullName || t.display || "").toString() || (t.prenom ? `${t.prenom} ${t.nom||""}`.trim() : (t.nom||"")),
-    manager: t.manager || t.Manager || t.referent || t.responsable || ""
-  }));
-})();
-
-/* app.js — DEMAT-BT v2.0 (Version avec modal + viewer)
-   Compatible avec TON index.html :
-   - Référent:  #viewReferent + #btGrid + #kpis
-   - Brief:     #viewBrief + #briefList + #briefMeta
-   - Import PDF: input#pdfFile
-   - Extraire:   button#btnExtract
-   - Modal viewer: #modal avec canvas
+/* DEMAT-BT — V1.3
+   - Interface gris doux
+   - PDF.js viewer
+   - Extraction simple (démo) -> liste BT à partir du texte
+   - Timeline stable 07:30 → 17:00 (pas 30 min)
 */
 
-const DOC_TYPES = ["BT", "AT", "PROC", "PLAN", "PHOTO", "STREET", "DOC"];
-let ZONES = null;
+const APP_VERSION = "V1.3";
 
-const state = {
-  pdf: null,
-  pdfFile: null,
-  pdfName: "",
-  totalPages: 0,
-  bts: [],
-  view: "referent", // referent | brief
-  layout: "grid", // grid | timeline
-  filters: {
-    q: "",
-    types: new Set(),
-    techId: ""
-  },
-  countsByTechId: new Map(),
-  // modal viewer state
-  modal: {
-    open: false,
-    currentBT: null,
-    currentPage: 1
-  }
-};
-
-// Numéro de version affiché dans l'UI
-const APP_VERSION = "1.2.2";
-
-// -------------------------
-// Helpers DOM
-// -------------------------
 const $ = (id) => document.getElementById(id);
 
-function setZonesStatus(msg) {
+const el = {
+  appVersion: $("appVersion"),
+  nowInfo: $("nowInfo"),
 
-function escapeHtml(input) {
-  const s = (input ?? "").toString();
-  return s.replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  }[c]));
-}
+  pdfFile: $("pdfFile"),
+  btnView: $("btnView"),
+  btnExtract: $("btnExtract"),
 
-  const el = $("zonesStatus");
-  if (el) el.textContent = msg;
-}
-function setPdfStatus(msg) {
-  const el = $("pdfStatus");
-  if (el) el.textContent = msg;
-}
-function setProgress(pct, msg) {
-  const bar = $("progBar");
-  const m = $("progMsg");
-  if (bar) bar.style.width = `${Math.max(0, Math.min(100, pct))}%`;
-  if (m && msg != null) m.textContent = msg;
-}
-function setExtractEnabled(enabled) {
-  const btn = $("btnExtract");
-  if (!btn) return;
-  btn.disabled = !enabled;
-  btn.classList.toggle("btn--disabled", !enabled);
-}
+  pdfStatus: $("pdfStatus"),
+  extractStatus: $("extractStatus"),
 
-function norm(s) {
-  return (s || "")
-    .replace(/\s+/g, " ")
-    .replace(/[']/g, "'")
-    .trim();
-}
+  pdfCanvas: $("pdfCanvas"),
+  viewerOverlay: $("viewerOverlay"),
 
-function safeUpper(s) {
-  return norm(s).toUpperCase();
-}
+  btnPrev: $("btnPrev"),
+  btnNext: $("btnNext"),
+  pageNum: $("pageNum"),
+  pageCount: $("pageCount"),
+  pdfMeta: $("pdfMeta"),
 
+  btList: $("btList"),
+  btPreview: $("btPreview"),
 
-
-// -------------------------
-// Topbar clock + status (Temps réel)
-// -------------------------
-const TOPBAR_STATUS = {
-  WAIT:  { cls: "tbDot--wait",  label: "En attente du PDF" },
-  LOADED:{ cls: "tbDot--loaded",label: "PDF chargé" },
-  DONE:  { cls: "tbDot--done",  label: "BT extraits" },
-  ERROR: { cls: "tbDot--error", label: "Erreur" }
+  timelineHeader: $("timelineHeader"),
+  timelineGrid: $("timelineGrid"),
 };
 
-function formatDateFR(d) {
-  // Ex: "lundi 26 janvier 2026"
-  try {
-    return d.toLocaleDateString("fr-FR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-  } catch {
-    // fallback
-    const pad = (n) => String(n).padStart(2, "0");
-    return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`;
+const state = {
+  file: null,
+  arrayBuffer: null,
+  pdfDoc: null,
+  pageNumber: 1,
+  pageCount: 0,
+  extractedText: "",
+  btItems: [], // {id, title, meta, excerpt}
+  selectedBtId: null,
+};
+
+function pad2(n){ return String(n).padStart(2,"0"); }
+
+function setNowInfo(){
+  const d = new Date();
+  const fr = new Intl.DateTimeFormat("fr-FR", { dateStyle: "full" }).format(d);
+  const hm = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  el.nowInfo.textContent = `${fr} • ${hm}`;
+}
+
+function setStatusPdf(msg){ el.pdfStatus.textContent = msg; }
+function setStatusExtract(msg){ el.extractStatus.textContent = msg; }
+
+function setButtonsEnabled(){
+  const hasFile = !!state.file;
+  const hasPdf = !!state.pdfDoc;
+
+  el.btnView.disabled = !hasFile;
+  el.btnExtract.disabled = !hasFile;
+
+  el.btnPrev.disabled = !(hasPdf && state.pageNumber > 1);
+  el.btnNext.disabled = !(hasPdf && state.pageNumber < state.pageCount);
+}
+
+function humanFileSize(bytes){
+  if (!bytes && bytes !== 0) return "—";
+  const units = ["B","KB","MB","GB"];
+  let i = 0;
+  let v = bytes;
+  while (v >= 1024 && i < units.length-1){ v /= 1024; i++; }
+  return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+/* -------------------- PDF VIEWER (PDF.js) -------------------- */
+async function loadPdfFromArrayBuffer(arrayBuffer){
+  if (!window.pdfjsLib){
+    setStatusPdf("PDF.js non chargé (CDN bloqué ?)");
+    return;
   }
-}
-
-function formatTimeFR(d) {
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function setTopbarStatus(kind, titleOverride) {
-  const dot = $("tbDot");
-  if (!dot) return;
-
-  // remove known classes
-  dot.classList.remove(
-    TOPBAR_STATUS.WAIT.cls,
-    TOPBAR_STATUS.LOADED.cls,
-    TOPBAR_STATUS.DONE.cls,
-    TOPBAR_STATUS.ERROR.cls
-  );
-
-  const entry = TOPBAR_STATUS[kind] || TOPBAR_STATUS.WAIT;
-  dot.classList.add(entry.cls);
-  dot.title = titleOverride || entry.label;
-}
-
-function setTopbarMeta(text) {
-  const meta = $("tbMeta");
-  if (meta) meta.textContent = text || "";
-}
-
-function updateTopbarClock() {
-  const main = $("tbDateTime");
-  if (!main) return;
-  const now = new Date();
-  main.textContent = `${formatDateFR(now)} — ${formatTimeFR(now)}`;
-  // meta stays whatever status message is
-}
-
-function startTopbarClock() {
-  updateTopbarClock();
-  // refresh every minute (align to minute boundary)
-  const now = new Date();
-  const msToNextMinute = (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
-  setTimeout(() => {
-    updateTopbarClock();
-    setInterval(updateTopbarClock, 60 * 1000);
-  }, Math.max(250, msToNextMinute));
-}
-// -------------------------
-// Load zones.json
-// -------------------------
-async function loadZones() {
-  setZonesStatus("Chargement…");
-  const res = await fetch(`./zones.json?v=${Date.now()}`, { cache: "no-store" });
-  if (!res.ok) throw new Error("zones.json introuvable (404). Vérifie emplacement/nom.");
-  ZONES = await res.json();
-  setZonesStatus("OK");
-  console.log("[DEMAT-BT] zones.json chargé ✅", ZONES);
-}
-
-function getZoneBBox(label) {
-  if (!ZONES) return null;
-  try {
-    const bb = ZONES.pages?.BT?.[label]?.bbox;
-    if (bb) return bb;
-  } catch {}
-  return null;
-}
-
-// -------------------------
-// PDF.js via script tag
-// -------------------------
-async function ensurePdfJs() {
-  if (window.pdfjsLib) return;
-
-  await new Promise((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-    s.onload = resolve;
-    s.onerror = () => reject(new Error("Impossible de charger pdf.js"));
-    document.head.appendChild(s);
-  });
 
   window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.js";
+
+  try{
+    const loadingTask = window.pdfjsLib.getDocument({ data: arrayBuffer });
+    state.pdfDoc = await loadingTask.promise;
+
+    state.pageCount = state.pdfDoc.numPages;
+    state.pageNumber = 1;
+
+    el.pageCount.textContent = String(state.pageCount);
+    el.pdfMeta.textContent = `Pages: ${state.pageCount}`;
+
+    await renderPage(state.pageNumber);
+    el.viewerOverlay.style.display = "none";
+
+    setButtonsEnabled();
+  } catch(err){
+    console.error(err);
+    setStatusPdf("Erreur de chargement PDF");
+  }
 }
 
-// -------------------------
-// Extraction texte dans bbox
-// -------------------------
-async function extractTextInBBox(page, bbox) {
-  if (!bbox) return "";
-  const tc = await page.getTextContent();
-  const items = tc.items || [];
-  const { x0, y0, x1, y1 } = bbox;
+async function renderPage(num){
+  if (!state.pdfDoc) return;
 
-  const picked = [];
-  for (const it of items) {
-    const t = it.transform;
-    if (!t) continue;
-    const x = t[4];
-    const y = t[5];
-    if (x >= x0 && x <= x1 && y >= y0 && y <= y1) {
-      const str = (it.str || "").trim();
-      if (str) picked.push({ str, x, y });
+  const page = await state.pdfDoc.getPage(num);
+  const viewport = page.getViewport({ scale: 1.4 });
+
+  const canvas = el.pdfCanvas;
+  const ctx = canvas.getContext("2d");
+
+  canvas.width = Math.floor(viewport.width);
+  canvas.height = Math.floor(viewport.height);
+
+  const renderContext = { canvasContext: ctx, viewport };
+  await page.render(renderContext).promise;
+
+  el.pageNum.textContent = String(num);
+  setButtonsEnabled();
+}
+
+/* -------------------- EXTRACTION SIMPLE -------------------- */
+async function extractAllText(){
+  if (!state.pdfDoc) {
+    await loadPdfFromArrayBuffer(state.arrayBuffer);
+    if (!state.pdfDoc) return "";
+  }
+
+  setStatusExtract("Extraction en cours…");
+
+  let full = "";
+  for (let i = 1; i <= state.pageCount; i++){
+    const page = await state.pdfDoc.getPage(i);
+    const content = await page.getTextContent();
+    const strings = content.items.map(it => it.str).filter(Boolean);
+    full += `\n\n--- PAGE ${i} ---\n` + strings.join(" ");
+  }
+
+  setStatusExtract("Extraction terminée.");
+  return full;
+}
+
+function buildBtListFromText(text){
+  // Base simple (démo) : on repère des occurrences "BT" + chiffres, ou "BT-" etc.
+  // Tu me diras ensuite ton vrai format exact, et on rend ça béton.
+  const lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean);
+  const hits = [];
+
+  const rx = /\bBT[\s\-:]*([0-9]{2,})\b/gi;
+
+  for (const l of lines){
+    let m;
+    while ((m = rx.exec(l)) !== null){
+      const id = `BT${m[1]}`;
+      hits.push({ id, raw: l });
     }
   }
 
-  // tri approx lecture
-  picked.sort((a, b) => (b.y - a.y) || (a.x - b.x));
-  return norm(picked.map(p => p.str).join(" "));
-}
-
-// -------------------------
-// Détection BT / types docs
-// -------------------------
-function isBTNumber(text) {
-  return /BT\d{8,14}/i.test(text || "");
-}
-function pickBTId(text) {
-  return ((text || "").match(/BT\d{8,14}/i) || [""])[0].toUpperCase();
-}
-function pickATId(text) {
-  return ((text || "").match(/AT\d{3,}/i) || [""])[0].toUpperCase();
-}
-function detectDocTypeFromHeader(text) {
-  const up = safeUpper(text);
-  if (up.includes("AUTORISATION") || up.includes("AT N")) return "AT";
-  if (up.includes("PROCEDURE") || up.includes("PROC") || up.includes("ORDONNANCEMENT")) return "PROC";
-  if (up.includes("PLAN") || up.includes("PLANS")) return "PLAN";
-  if (up.includes("PHOTO") || up.includes("PHOTOS")) return "PHOTO";
-  if (up.includes("STREET")) return "STREET";
-  return "DOC";
-}
-
-// -------------------------
-// Classification des interventions
-// -------------------------
-function classifyIntervention(bt) {
-  const objet = safeUpper(bt.objet || "");
-  
-  // Clientèle (bleu)
-  if (objet.includes("MISE EN SERVICE") || 
-      objet.includes("MISE OU REMISE EN SERVICE") ||
-      objet.includes("REMISE EN SERVICE") ||
-      objet.includes("MISE HORS SERVICE") ||
-      objet.includes("MHS") ||
-      objet.includes("MES") ||
-      objet.includes("COMPTEUR") ||
-      objet.includes("POSTE CLIENT")) {
-    return { category: "CLIENTELE", label: "MHS/MES", color: "#2563eb", icon: "🟦" };
-  }
-  
-  // Maintenance (vert)
-  if (objet.includes("MAINTENANCE") ||
-      objet.includes("CI-CM") ||
-      objet.includes("CICM") ||
-      objet.includes("ROBINET") ||
-      objet.includes("PREVENTIF")) {
-    return { category: "MAINTENANCE", label: "MAINT CI-CM", color: "#10b981", icon: "🟩" };
-  }
-  
-  // Surveillance (orange)
-  if (objet.includes("SURVEILLANCE") ||
-      objet.includes("ADF") ||
-      objet.includes("SUIVI") ||
-      objet.includes("ALERTE") ||
-      objet.includes("FUITE")) {
-    return { category: "SURVEILLANCE", label: "SURVEILLANCE", color: "#f59e0b", icon: "🟧" };
-  }
-  
-  // Localisation (orange foncé)
-  if (objet.includes("LOCALISATION")) {
-    return { category: "LOCALISATION", label: "LOCALISATION", color: "#ea580c", icon: "🟧" };
-  }
-  
-  // Administratif (violet)
-  if (objet.includes("REUNION") ||
-      objet.includes("DIVERS") ||
-      objet.includes("ADMINISTRATIF") ||
-      objet.includes("FORMATION")) {
-    return { category: "ADMINISTRATIF", label: "ADMINISTRATIF", color: "#a855f7", icon: "🟪" };
-  }
-  
-  // Autre (gris)
-  return { category: "AUTRE", label: "AUTRE", color: "#64748b", icon: "⬛" };
-}
-
-// -------------------------
-// Formater la durée pour l'affichage
-// -------------------------
-function formatDuree(dureeText) {
-  if (!dureeText) return null;
-  
-  // Format GRDF : "DUREE 01h00 13h00 - 14h00"
-  // Extraire juste la durée et les horaires
-  const grdfPattern = /DUREE\s+(\d{1,2}h\d{2})\s+(\d{1,2}h\d{2}\s*[-–]\s*\d{1,2}h\d{2})/i;
-  const match = dureeText.match(grdfPattern);
-  
-  if (match) {
-    return `${match[2]} (${match[1]})`;
-  }
-  
-  // Sinon retourner tel quel nettoyé
-  return dureeText.replace(/^DUREE\s+/i, '');
-}
-
-// -------------------------
-// Extraction des heures de début et fin
-// -------------------------
-function extractTimeSlot(bt) {
-  const pad2 = (n) => (n < 10 ? `0${n}` : `${n}`);
-  const norm = (s) =>
-    String(s || "")
-      .replace(/\u00A0/g, " ")
-      .replace(/[\u2010-\u2015\u2212]/g, "-")
-      .replace(/–|—/g, "-")
-      .replace(/\s+/g, " ")
-      .trim();
-
-  // On accepte plusieurs sources possibles selon l'extraction / l'affichage
-  const sources = [
-    bt.duree,
-    bt.dureeText,
-    bt.heure,
-    bt.horaire,
-    bt.timeSlot,
-    bt.timeslot,
-    bt.time,
-    bt.designation, // parfois "08h00 - 12h00" est dans la désignation
-  ];
-
-  const txt = norm(sources.find((x) => x && String(x).trim()) || "");
-
-  // 1) Format GRDF : "DUREE 01h00 13h00 - 14h00"
-  let m = txt.match(/DUREE\s+\d{1,2}h\d{2}\s+(\d{1,2})h(\d{2})\s*-\s*(\d{1,2})h(\d{2})/i);
-  if (m) return `${pad2(parseInt(m[1], 10))}h${m[2]} - ${pad2(parseInt(m[3], 10))}h${m[4]}`;
-
-  // 2) Formats génériques : "13h00 - 14h00" / "13:00-14:00" / "13h00–14h00"
-  m = txt.match(/(\d{1,2})\s*[h:]\s*(\d{2})\s*-\s*(\d{1,2})\s*[h:]\s*(\d{2})/i);
-  if (m) return `${pad2(parseInt(m[1], 10))}h${m[2]} - ${pad2(parseInt(m[3], 10))}h${m[4]}`;
-
-  // 3) Formats "à" : "13h00 à 14h00"
-  m = txt.match(/(\d{1,2})\s*[h:]\s*(\d{2})\s*(?:a|à|to)\s*(\d{1,2})\s*[h:]\s*(\d{2})/i);
-  if (m) return `${pad2(parseInt(m[1], 10))}h${m[2]} - ${pad2(parseInt(m[3], 10))}h${m[4]}`;
-
-  return null;
-}
-
-// -------------------------
-// Team parsing depuis REALISATION (NNI + nom)
-// Pattern NNI: 1 lettre + 5 chiffres (A94073)
-// -------------------------
-function parseTeamFromRealisation(text) {
-  const t = safeUpper(text);
-  const re = /([A-Z]\d{5})\s+([A-ZÀ-Ÿ][A-ZÀ-Ÿ' -]{2,60})/g;
-  const out = [];
-  let m;
-  while ((m = re.exec(t)) !== null) {
-    const nni = m[1];
-    const name = norm(m[2]);
-    if (!out.some(x => x.nni === nni)) out.push({ nni, name });
-  }
-  return out;
-}
-
-function mapTechByNni(nni) {
-  const techs = window.TECHNICIANS || [];
-  return techs.find(t => (t.nni || "").toUpperCase() === (nni || "").toUpperCase()) || null;
-}
-function techKey(tech) {
-  return tech ? (tech.id || tech.nni) : "";
-}
-
-// -------------------------
-// Extraction principale
-// -------------------------
-async function extractAll() {
-  if (!state.pdf) throw new Error("PDF non chargé.");
-  if (!ZONES) throw new Error("Zones non chargées.");
-
-  const bbBTNUM = getZoneBBox("BT_NUM");
-  const bbOBJ = getZoneBBox("OBJET");
-  const bbDATE = getZoneBBox("DATE_PREVUE") || getZoneBBox("DATE_PREVU");
-  const bbLOC = getZoneBBox("LOCALISATION");
-  const bbCLIENT = getZoneBBox("CLIENT_NOM");
-  const bbAT = getZoneBBox("AT_NUM");
-  const bbREAL = getZoneBBox("REALISATION");
-  const bbDESI = getZoneBBox("DESIGNATION");
-  const bbDUREE = getZoneBBox("DUREE"); // Nouveau: durée prévue
-
-  state.bts = [];
-  state.countsByTechId = new Map();
-
-  let currentBT = null;
-
-  for (let p = 1; p <= state.totalPages; p++) {
-    setProgress((p - 1) / state.totalPages * 100, `Analyse page ${p}/${state.totalPages}...`);
-    const page = await state.pdf.getPage(p);
-
-    const btNumTxt = norm(await extractTextInBBox(page, bbBTNUM));
-    const isBtPage = isBTNumber(btNumTxt);
-
-    if (isBtPage) {
-      const id = pickBTId(btNumTxt);
-      const objet = norm(await extractTextInBBox(page, bbOBJ));
-      const datePrevue = norm(await extractTextInBBox(page, bbDATE));
-      const client = norm(await extractTextInBBox(page, bbCLIENT));
-      const loc = norm(await extractTextInBBox(page, bbLOC));
-      const atNumTxt = norm(await extractTextInBBox(page, bbAT));
-      const atNum = pickATId(atNumTxt);
-      const realTxt = norm(await extractTextInBBox(page, bbREAL));
-      const desiTxt = norm(await extractTextInBBox(page, bbDESI));
-      const dureeTxt = norm(await extractTextInBBox(page, bbDUREE)); // Durée prévue
-
-      const team = parseTeamFromRealisation(realTxt);
-
-      currentBT = {
-        id,
-        pageStart: p,
-        objet,
-        datePrevue,
-        client,
-        localisation: loc,
-        atNum,
-        team,
-        designation: desiTxt,
-        duree: dureeTxt, // Stocker la durée
-        docs: [{ page: p, type: "BT" }]
-      };
-
-      state.bts.push(currentBT);
-
-      // compteur BT par technicien (si équipe trouvée)
-      for (const m of team) {
-        const tech = mapTechByNni(m.nni);
-        if (!tech) continue;
-        const key = techKey(tech);
-        state.countsByTechId.set(key, (state.countsByTechId.get(key) || 0) + 1);
-      }
-
-      continue;
-    }
-
-    // pages suivantes rattachées au dernier BT
-    if (currentBT) {
-      const header = norm(await extractTextInBBox(page, bbOBJ));
-      const type = detectDocTypeFromHeader(header);
-      currentBT.docs.push({ page: p, type });
+  // Dédup + limite
+  const map = new Map();
+  for (const h of hits){
+    if (!map.has(h.id)){
+      map.set(h.id, {
+        id: h.id,
+        title: h.id,
+        meta: "Détection automatique (démo)",
+        excerpt: h.raw.slice(0, 240),
+      });
     }
   }
 
-  setProgress(100, `Terminé : ${state.bts.length} BT détectés.`);
-  console.log("[DEMAT-BT] Extraction OK ✅", state.bts.length, "BT");
-  // Statut topbar
-  setTopbarStatus('DONE');
-  setTopbarMeta(`BT extraits : ${state.bts.length}`);
-  renderAll();
-}
-
-// -------------------------
-// UI: chips types
-// -------------------------
-function buildTypeChips() {
-  const root = $("typeChips");
-  if (!root) return;
-
-  root.innerHTML = "";
-  for (const t of DOC_TYPES) {
-    const btn = document.createElement("button");
-    btn.className = "chip";
-    btn.textContent = t;
-    btn.addEventListener("click", () => {
-      if (state.filters.types.has(t)) state.filters.types.delete(t);
-      else state.filters.types.add(t);
-      syncTypeChipsUI();
-      renderAll();
-    });
-    root.appendChild(btn);
-  }
-  syncTypeChipsUI();
-}
-
-function syncTypeChipsUI() {
-  const root = $("typeChips");
-  if (!root) return;
-  [...root.querySelectorAll(".chip")].forEach(chip => {
-    const t = chip.textContent.trim();
-    chip.classList.toggle("chip--active", state.filters.types.has(t));
-  });
-}
-
-// -------------------------
-// Tech select (avec compteurs)
-// -------------------------
-function buildTechSelectWithCounts() {
-  const sel = $("techSelect");
-  if (!sel) return;
-
-  const current = sel.value;
-  sel.innerHTML = '<option value="">— Tous —</option>';
-
-  const techs = window.TECHNICIANS || [];
-  const withBt = techs.filter(t => {
-    const cnt = state.countsByTechId.get(techKey(t)) || 0;
-    return cnt > 0;
-  });
-
-  // tri alpha
-  withBt.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-
-  for (const t of withBt) {
-    const cnt = state.countsByTechId.get(techKey(t)) || 0;
-    const opt = document.createElement("option");
-    opt.value = techKey(t);
-    opt.textContent = `${t.name} (${cnt} BT)`;
-    sel.appendChild(opt);
+  // Si rien trouvé, on fabrique une “liste” fallback juste pour éviter un vide total
+  const items = Array.from(map.values());
+  if (items.length === 0){
+    return [{
+      id: "BT—",
+      title: "Aucun identifiant BT détecté",
+      meta: "On adaptera le parseur à ton format réel",
+      excerpt: text.slice(0, 350) || "—",
+    }];
   }
 
-  // restore selection si encore valide
-  if (current && withBt.some(t => techKey(t) === current)) {
-    sel.value = current;
-  } else {
-    sel.value = "";
-  }
+  return items.slice(0, 60);
 }
 
-// -------------------------
-// Filtrage
-// -------------------------
-function matchesFilters(bt) {
-  const q = safeUpper(state.filters.q);
-  if (q) {
-    const hay = safeUpper([bt.id, bt.objet, bt.client, bt.localisation, bt.datePrevue].join(" "));
-    if (!hay.includes(q)) return false;
-  }
+function renderBtList(){
+  el.btList.innerHTML = "";
 
-  if (state.filters.types.size > 0) {
-    const typesInBt = new Set(bt.docs.map(d => d.type));
-    let ok = false;
-    for (const t of state.filters.types) {
-      if (typesInBt.has(t)) { ok = true; break; }
-    }
-    if (!ok) return false;
-  }
-
-  if (state.filters.techId) {
-    const wanted = state.filters.techId;
-    const has = (bt.team || []).some(m => {
-      const tech = mapTechByNni(m.nni);
-      return techKey(tech) === wanted;
-    });
-    if (!has) return false;
-  }
-
-  return true;
-}
-
-// -------------------------
-// Render KPI
-// -------------------------
-function renderKpis(filtered) {
-  const kpis = $("kpis");
-  if (!kpis) return;
-
-  const totalBT = filtered.length;
-  const docsCount = filtered.reduce((acc, bt) => acc + (bt.docs?.length || 0), 0);
-
-  kpis.innerHTML = `
-    <div class="kpi"><b>${totalBT}</b> BT</div>
-    <div class="kpi"><b>${docsCount}</b> Pages liées</div>
-  `;
-}
-
-// -------------------------
-// Render Référent (grid)
-// -------------------------
-function renderReferent(filtered) {
-  const grid = $("btGrid");
-  const timeline = $("btTimeline");
-  
-  if (!grid || !timeline) return;
-
-  // Show/hide based on layout mode
-  if (state.layout === "grid") {
-    grid.style.display = "grid";
-    timeline.style.display = "none";
-    renderGrid(filtered, grid);
-  } else {
-    grid.style.display = "none";
-    timeline.style.display = "flex";
-    renderTimeline(filtered, timeline);
-  }
-}
-
-function renderGrid(filtered, grid) {
-  grid.innerHTML = "";
-  if (filtered.length === 0) {
-    grid.innerHTML = `<div class="hint" style="padding:16px;">Aucun BT à afficher avec ces filtres.</div>`;
+  if (!state.btItems.length){
+    const d = document.createElement("div");
+    d.className = "empty";
+    d.textContent = "Aucun BT (fais “Extraire”).";
+    el.btList.appendChild(d);
     return;
   }
 
-  for (const bt of filtered) {
-    const teamTxt = (bt.team || []).map(m => {
-      const tech = mapTechByNni(m.nni);
-      return tech ? tech.name : m.nni;
-    }).join(" • ") || "—";
-
-    // Compter les docs par type
-    const counts = {};
-    for (const d of bt.docs || []) counts[d.type] = (counts[d.type] || 0) + 1;
-
-    // Classification de l'intervention
-    const classification = classifyIntervention(bt);
-
-    const card = document.createElement("div");
-    card.className = "card btCard";
-    
-    // Top section avec ID et badges
-    const topDiv = document.createElement("div");
-    topDiv.className = "btTop";
-    
-    const leftSection = document.createElement("div");
-    leftSection.style.display = "flex";
-    leftSection.style.flexDirection = "column";
-    leftSection.style.gap = "6px";
-    
-    const idDiv = document.createElement("div");
-    idDiv.className = "btId";
-    idDiv.textContent = bt.id || "BT ?";
-    
-    // Badge de catégorie bien visible
-    const categoryBadge = document.createElement("div");
-    categoryBadge.className = "category-label";
-    categoryBadge.style.cssText = `
-      display: inline-block;
-      padding: 4px 10px;
-      border-radius: 999px;
-      font-size: 10px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      background: ${classification.color};
-      color: #fff;
-      box-shadow: 0 2px 8px ${classification.color}40;
+  for (const item of state.btItems){
+    const btn = document.createElement("div");
+    btn.className = "bt" + (item.id === state.selectedBtId ? " bt--active" : "");
+    btn.innerHTML = `
+      <div class="bt__title">${escapeHtml(item.title)}</div>
+      <div class="bt__meta">${escapeHtml(item.meta)}</div>
     `;
-    categoryBadge.textContent = classification.label;
-    
-    leftSection.appendChild(idDiv);
-    leftSection.appendChild(categoryBadge);
-    
-    const badgesDiv = document.createElement("div");
-    badgesDiv.className = "badges";
-    
-    // Créer des badges pour chaque type de doc
-    for (const [type, count] of Object.entries(counts)) {
-      const badge = document.createElement("span");
-      badge.className = type === "BT" ? "badge badge--strong" : "badge";
-      badge.textContent = `${type}:${count}`;
-      badgesDiv.appendChild(badge);
-    }
-    
-    topDiv.appendChild(leftSection);
-    topDiv.appendChild(badgesDiv);
-    
-    // Meta info
-    const metaDiv = document.createElement("div");
-    metaDiv.className = "btMeta";
-    const dureeFormatted = formatDuree(bt.duree);
-    metaDiv.innerHTML = `
-      <div>📅 ${bt.datePrevue || "—"}</div>
-      ${dureeFormatted ? `<div>⏱️ ${dureeFormatted}</div>` : ""}
-      <div>📋 ${bt.objet || "—"}</div>
-      <div>👤 ${bt.client || "—"}</div>
-      <div>📍 ${bt.localisation || "—"}</div>
-      <div>👥 ${teamTxt}</div>
-      ${bt.atNum ? `<div>🧾 ${bt.atNum}</div>` : ""}
-    `;
-    
-    // Actions (boutons pour voir les docs)
-    const actionsDiv = document.createElement("div");
-    actionsDiv.className = "btActions";
-    
-    // Créer un bouton pour chaque document
-    for (const doc of bt.docs || []) {
-      const btn = document.createElement("button");
-      btn.className = "btn btn--secondary";
-      btn.textContent = `${doc.type} (p.${doc.page})`;
-      btn.addEventListener("click", () => openModal(bt, doc.page));
-      actionsDiv.appendChild(btn);
-    }
-    
-    card.appendChild(topDiv);
-    card.appendChild(metaDiv);
-    card.appendChild(actionsDiv);
-    grid.appendChild(card);
+    btn.addEventListener("click", () => selectBt(item.id));
+    el.btList.appendChild(btn);
   }
 }
 
-function renderTimeline(filtered, timeline) {
-  timeline.innerHTML = "";
-  
-  if (filtered.length === 0) {
-    timeline.innerHTML = `<div class="timeline-empty">Aucun BT à afficher avec ces filtres.</div>`;
-    return;
+function selectBt(id){
+  state.selectedBtId = id;
+  const item = state.btItems.find(x => x.id === id);
+  el.btPreview.textContent = item ? item.excerpt : "—";
+  renderBtList();
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+
+/* -------------------- TIMELINE -------------------- */
+function timeToMinutes(h, m){ return h*60 + m; }
+
+function buildTimeSlots(startMin, endMin, stepMin){
+  const slots = [];
+  for (let t = startMin; t <= endMin; t += stepMin){
+    const h = Math.floor(t/60);
+    const m = t % 60;
+    slots.push({ t, label: `${pad2(h)}:${pad2(m)}` });
   }
+  return slots;
+}
 
-  // Fenêtre de journée + grille fine (30 min) pour éviter les "faux" chevauchements
-  // 07:30 → 17:00
-  const dayStart = 7 * 60 + 30;
-  const dayEnd = 17 * 60;
-  const step = 30; // minutes
-  const ticks = [];
-  for (let m = dayStart; m <= dayEnd; m += step) ticks.push(m);
-  const slotCount = ticks.length - 1; // segments
-  const labelForTick = (m) => {
-    const h = Math.floor(m / 60);
-    const mi = m % 60;
-    const hh = String(h).padStart(2, "0");
-    if (mi === 0) return `${h}h`;
-    return `${hh}h${String(mi).padStart(2, "0")}`;
-  };
+function renderTimeline(){
+  const start = timeToMinutes(7,30);
+  const end = timeToMinutes(17,0);
+  const step = 30;
 
-  // Grille CSS: 1 colonne "tech" + 1 colonne par tick (30 min)
-  grid.style.gridTemplateColumns = `200px repeat(${ticks.length}, minmax(84px, 1fr))`;
-  grid.style.minWidth = `${200 + ticks.length * 84}px`;
-  grid.style.gridAutoRows = "46px";
-
-  // Récupérer tous les techniciens qui ont des BT
-  const techSet = new Map();
-  for (const bt of filtered) {
-    for (const member of bt.team || []) {
-      const tech = mapTechByNni(member.nni);
-      if (tech) {
-        const key = techKey(tech);
-        if (!techSet.has(key)) {
-          techSet.set(key, tech.name);
-        }
-      }
-    }
-  }
-
-  if (techSet.size === 0) {
-    timeline.innerHTML = `<div class="timeline-empty">Aucun technicien trouvé pour ces BT.</div>`;
-    return;
-  }
-
-  // Trier les techniciens par nom
-  const techs = Array.from(techSet.entries()).sort((a, b) => 
-    a[1].localeCompare(b[1])
-  );
-
-  // Créer une map BT par technicien
-  const btsByTech = new Map();
-  for (const bt of filtered) {
-    for (const member of bt.team || []) {
-      const tech = mapTechByNni(member.nni);
-      if (tech) {
-        const key = techKey(tech);
-        if (!btsByTech.has(key)) {
-          btsByTech.set(key, []);
-        }
-        btsByTech.get(key).push(bt);
-      }
-    }
-  }
-
-  // Calculer le nombre de sous-lignes nécessaires pour chaque technicien
-  const techRowCounts = new Map();
-  for (const [techId, techBTs] of btsByTech.entries()) {
-    // Préparer les BT avec leurs créneaux
-    const btsWithSlots = techBTs.map(bt => {
-      const timeSlot = extractTimeSlot(bt);
-      let startCol, endCol;
-      
-      if (timeSlot) {
-        const sMin = (typeof timeSlot.startMin === "number") ? timeSlot.startMin : Math.round(timeSlot.start * 60);
-        const eMin = (typeof timeSlot.endMin === "number") ? timeSlot.endMin : Math.round(timeSlot.end * 60);
-        const startClamped = Math.max(dayStart, Math.min(dayEnd - step, sMin));
-        const endClamped = Math.max(dayStart + step, Math.min(dayEnd, eMin));
-        startCol = Math.floor((startClamped - dayStart) / step) + 2;
-        endCol = Math.ceil((endClamped - dayStart) / step) + 2;
-      } else {
-        startCol = 2;
-        endCol = 4;
-      }
-      
-      return { bt, startCol, endCol, timeSlot };
-    });
-    
-    // Détecter les chevauchements et assigner des tracks
-    const tracks = [];
-    for (const item of btsWithSlots) {
-      let placed = false;
-      for (let trackIdx = 0; trackIdx < tracks.length; trackIdx++) {
-        const track = tracks[trackIdx];
-        const hasOverlap = track.some(existing => 
-          !(item.endCol <= existing.startCol || item.startCol >= existing.endCol)
-        );
-        
-        if (!hasOverlap) {
-          track.push(item);
-          item.track = trackIdx;
-          placed = true;
-          break;
-        }
-      }
-      
-      if (!placed) {
-        tracks.push([item]);
-        item.track = tracks.length - 1;
-      }
-    }
-    
-    techRowCounts.set(techId, { count: tracks.length, btsWithSlots });
-  }
-
-  // Calculer le total de rows
-  let totalRows = 0;
-  const techRowStarts = new Map();
-  for (const [techId] of techs) {
-    techRowStarts.set(techId, totalRows + 2); // +2 pour le header
-    const rowCount = techRowCounts.get(techId)?.count || 1;
-    totalRows += rowCount;
-  }
-
-  // Créer la grille
-  const container = document.createElement("div");
-  container.style.cssText = "position:relative; overflow-x:auto; background:var(--card); border-radius:var(--radius); border:1.5px solid var(--line); box-shadow:var(--shadow);";
-
-  const grid = document.createElement("div");
-  grid.className = "timeline-grid";
-  grid.style.gridTemplateColumns = `180px repeat(${slotCount}, minmax(90px, 1fr))`;
-  grid.style.minWidth = `${180 + slotCount * 120}px`;
-  grid.style.gridTemplateRows = `50px repeat(${totalRows}, 70px)`;
-  grid.style.position = "relative";
+  const slots = buildTimeSlots(start, end, step);
 
   // Header
-  const header = document.createElement("div");
-  header.className = "timeline-header";
-
-  const corner = document.createElement("div");
-  corner.className = "timeline-corner";
-  corner.textContent = "Techniciens";
-  header.appendChild(corner);
-
-  for (let i = 0; i < slotCount; i++) {
-    const hourCell = document.createElement("div");
-    hourCell.className = "timeline-hour";
-    hourCell.style.gridColumn = i + 2;
-    hourCell.textContent = labelForTick(ticks[i]);
-    header.appendChild(hourCell);
+  el.timelineHeader.innerHTML = "";
+  for (let i = 0; i < slots.length; i++){
+    const chip = document.createElement("div");
+    chip.className = "timechip";
+    chip.textContent = slots[i].label;
+    el.timelineHeader.appendChild(chip);
   }
 
-  grid.appendChild(header);
+  // Grid : 4 lignes “exemple”
+  el.timelineGrid.innerHTML = "";
+  const rows = ["BT/Inter 1", "BT/Inter 2", "BT/Inter 3", "BT/Inter 4"];
 
-  // Lignes: techniciens + cellules vides
-  techs.forEach(([techId, techName]) => {
-    const rowStart = techRowStarts.get(techId);
-    const rowCount = techRowCounts.get(techId)?.count || 1;
-    
-    // Nom du technicien (span sur toutes ses rows)
-    const techCell = document.createElement("div");
-    techCell.className = "timeline-tech";
-    techCell.style.gridRow = `${rowStart} / span ${rowCount}`;
-    
-    const avatar = document.createElement("div");
-    avatar.className = "timeline-tech-avatar";
-    avatar.textContent = techName.substring(0, 2).toUpperCase();
-    
-    const nameDiv = document.createElement("div");
-    nameDiv.style.fontSize = "12px";
-    nameDiv.style.lineHeight = "1.3";
-    nameDiv.textContent = techName;
-    
-    techCell.appendChild(avatar);
-    techCell.appendChild(nameDiv);
-    grid.appendChild(techCell);
+  for (let r = 0; r < rows.length; r++){
+    const row = document.createElement("div");
+    row.className = "gridrow";
 
-    // Cellules vides
-    for (let rowIdx = 0; rowIdx < rowCount; rowIdx++) {
-      for (let hourIdx = 0; hourIdx < slotCount; hourIdx++) {
-        const cell = document.createElement("div");
-        cell.className = "timeline-cell";
-        cell.style.gridRow = rowStart + rowIdx;
-        cell.style.gridColumn = hourIdx + 2;
-        grid.appendChild(cell);
-      }
+    for (let i = 0; i < slots.length; i++){
+      const c = document.createElement("div");
+      c.className = "cell" + ((i % 2 === 1) ? " cell--half" : "");
+      row.appendChild(c);
     }
 
-    // Ajouter les BT
-    const techData = techRowCounts.get(techId);
-    if (techData) {
-      for (const item of techData.btsWithSlots) {
-        const { bt, startCol, endCol, timeSlot, track } = item;
-        const classification = classifyIntervention(bt);
-        const colSpan = Math.max(1, endCol - startCol);
-        
-        // Debug pour le premier BT
-        if (item === techData.btsWithSlots[0]) {
-          console.log(`[${techName}] BT ${bt.id}:`, {
-            designation: bt.designation,
-            duree: bt.duree,
-            timeSlot,
-            startCol,
-            endCol,
-            colSpan,
-            track
-          });
-        }
-        
-        const btDiv = document.createElement("div");
-        btDiv.className = "timeline-bt-block";
-        btDiv.style.cssText = `
-          grid-row: ${rowStart + track};
-          grid-column: ${startCol} / span ${colSpan};
-          background: ${classification.color}20;
-          border: 2px solid ${classification.color};
-          border-radius: var(--radius-xs);
-          padding: 6px 8px;
-          cursor: pointer;
-          transition: var(--transition);
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-          min-height: 50px;
-          justify-content: center;
-        `;
-        
-        const idDiv = document.createElement("div");
-        idDiv.style.cssText = `
-          font-weight: 800;
-          font-size: 11px;
-          color: ${classification.color};
-          line-height: 1.2;
-        `;
-        idDiv.textContent = bt.id;
-        
-        const typeDiv = document.createElement("div");
-        typeDiv.style.cssText = `
-          font-size: 9px;
-          font-weight: 700;
-          color: ${classification.color};
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          line-height: 1.2;
-        `;
-        typeDiv.textContent = classification.label;
-        
-        btDiv.appendChild(idDiv);
-        btDiv.appendChild(typeDiv);
-        
-        if (timeSlot && colSpan >= 3) {
-          const timeDiv = document.createElement("div");
-          timeDiv.style.cssText = `
-            font-size: 8px;
-            color: ${classification.color}CC;
-            margin-top: 2px;
-          `;
-          timeDiv.textContent = timeSlot.text;
-          btDiv.appendChild(timeDiv);
-        }
-        
-        btDiv.addEventListener("click", () => openModal(bt, bt.pageStart));
-        btDiv.addEventListener("mouseenter", () => {
-          btDiv.style.transform = "translateY(-2px)";
-          btDiv.style.boxShadow = "var(--shadow)";
-          btDiv.style.zIndex = "10";
-        });
-        btDiv.addEventListener("mouseleave", () => {
-          btDiv.style.transform = "translateY(0)";
-          btDiv.style.boxShadow = "none";
-          btDiv.style.zIndex = "1";
-        });
-        
-        grid.appendChild(btDiv);
-      }
-    }
+    el.timelineGrid.appendChild(row);
+  }
+}
+
+/* -------------------- EVENTS -------------------- */
+function wireEvents(){
+  el.pdfFile.addEventListener("change", async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+
+    state.file = f;
+    state.arrayBuffer = await f.arrayBuffer();
+    state.pdfDoc = null;
+    state.pageNumber = 1;
+    state.pageCount = 0;
+    state.extractedText = "";
+    state.btItems = [];
+    state.selectedBtId = null;
+
+    setStatusPdf(`${f.name} • ${humanFileSize(f.size)}`);
+    setStatusExtract("—");
+
+    el.pdfMeta.textContent = "—";
+    el.pageNum.textContent = "—";
+    el.pageCount.textContent = "—";
+    el.btPreview.textContent = "—";
+    el.viewerOverlay.style.display = "flex";
+
+    renderBtList();
+    setButtonsEnabled();
   });
 
-  container.appendChild(grid);
-  timeline.appendChild(container);
-}
-function renderBriefTimeline(filtered) {
-  const host = $("briefTimeline");
-  if (!host) return;
-
-  host.innerHTML = "";
-
-  if (!state.filters.techId) {
-    host.innerHTML = `<div class="hint" style="padding:16px;">Sélectionne un technicien pour afficher la timeline.</div>`;
-    return;
-  }
-
-  if (!filtered || filtered.length === 0) {
-    host.innerHTML = `<div class="hint" style="padding:16px;">Aucun BT à afficher sur la timeline.</div>`;
-    return;
-  }
-
-  // Collect time slots (via texte "designation")
-  const items = [];
-  for (const bt of filtered) {
-    const slot = extractTimeSlot(bt);
-    if (slot) items.push({ bt, slot });
-  }
-
-  if (items.length === 0) {
-    host.innerHTML = `<div class="hint" style="padding:16px;">Aucun créneau horaire détecté sur ces BT.</div>`;
-    return;
-  }
-
-  // Fenêtre fixe comme côté Référent
-  const dayStart = 7 * 60 + 30; // 07:30
-  const dayEnd = 17 * 60;       // 17:00
-
-  // Grille fine (30 min)
-  const step = 30; // minutes
-  const pad = 12;
-  const cellPx = 90; // largeur d'un créneau de 30 min
-  const ticks = [];
-  for (let m = dayStart; m <= dayEnd; m += step) ticks.push(m);
-  const slotCount = Math.max(1, ticks.length - 1);
-  const canvasW = Math.max(980, slotCount * cellPx + pad * 2);
-
-  // Assign lanes to avoid overlap
-  items.sort((a,b)=>(a.slot.startMin ?? (a.slot.start*60)) - (b.slot.startMin ?? (b.slot.start*60)));
-  const lanes = []; // lane end time
-  for (const it of items) {
-    const s = it.slot.startMin ?? Math.round(it.slot.start * 60);
-    const e = it.slot.endMin ?? Math.round(it.slot.end * 60);
-    let lane = lanes.findIndex(end => end <= s);
-    if (lane === -1) { lane = lanes.length; lanes.push(e); }
-    else lanes[lane] = e;
-    it.lane = lane;
-  }
-  const laneH = 52;
-  const canvasH = Math.max(220, 60 + (lanes.length) * laneH);
-
-  const canvas = document.createElement("div");
-  canvas.className = "briefTimeline__canvas";
-  canvas.style.width = canvasW + "px";
-  canvas.style.height = canvasH + "px";
-
-  // Hours row
-  const hoursRow = document.createElement("div");
-  hoursRow.className = "briefTimeline__hours";
-  for (let i = 0; i < slotCount; i++) {
-    const el = document.createElement("div");
-    el.className = "briefTimeline__hour";
-    el.style.width = cellPx + "px";
-    const m = ticks[i];
-    const hh = Math.floor(m / 60);
-    const mm = m % 60;
-    el.textContent = mm === 0 ? `${String(hh).padStart(2,"0")}h` : `${String(hh).padStart(2,"0")}h${String(mm).padStart(2,"0")}`;
-    hoursRow.appendChild(el);
-  }
-  canvas.appendChild(hoursRow);
-
-  // Grid lines
-  const grid = document.createElement("div");
-  grid.className = "briefTimeline__grid";
-  for (let i=0;i<=slotCount;i++){
-    const gl = document.createElement("div");
-    gl.className = "briefTimeline__gridLine";
-    gl.style.left = (pad + i*cellPx) + "px";
-    grid.appendChild(gl);
-  }
-  canvas.appendChild(grid);
-
-  const track = document.createElement("div");
-  track.className = "briefTimeline__track";
-  canvas.appendChild(track);
-
-  // Blocks
-  for (const it of items) {
-    const { bt, slot } = it;
-    const classification = classifyIntervention(bt);
-
-    const startM = (typeof slot.startMin === "number") ? slot.startMin : Math.round(slot.start*60);
-    const endM = (typeof slot.endMin === "number") ? slot.endMin : Math.round(slot.end*60);
-    const s = Math.max(dayStart, Math.min(dayEnd, startM));
-    const e = Math.max(dayStart, Math.min(dayEnd, endM));
-    const left = pad + ((s - dayStart) / step) * cellPx;
-    const width = Math.max(90, ((e - s) / step) * cellPx - 6);
-    const top = 6 + it.lane * laneH;
-
-    const block = document.createElement("div");
-    block.className = "briefTimeline__block";
-    block.style.left = left + "px";
-    block.style.width = width + "px";
-    block.style.top = top + "px";
-    block.style.background = classification.color;
-
-    block.innerHTML = `
-      <div class="briefTimeline__id">${escapeHtml(bt.id || "")}</div>
-      <div class="briefTimeline__time">${escapeHtml(slot.text || "")}</div>
-    `;
-
-    block.addEventListener("click", () => {
-      // Scroll to card if present, else open first doc/BT
-      const card = document.getElementById(`briefCard-${bt.id}`);
-      if (card) {
-        card.scrollIntoView({ behavior: "smooth", block: "start" });
-        card.classList.add("pulse");
-        setTimeout(()=>card.classList.remove("pulse"), 650);
-      }
-    });
-
-    track.appendChild(block);
-  }
-
-  host.appendChild(canvas);
-}
-
-
-// -------------------------
-// Render Brief (list)
-// -------------------------
-function renderBrief(filtered) {
-  const list = $("briefList");
-  const meta = $("briefMeta");
-  const tlHost = $("briefTimeline");
-  if (!list) return;
-
-  // brief => doit avoir un technicien sélectionné
-  if (!state.filters.techId) {
-    if (meta) meta.textContent = "";
-    if (tlHost) tlHost.innerHTML = `<div class="hint" style="padding:16px;">Sélectionne un technicien pour afficher la timeline.</div>`;
-    list.innerHTML = `<div class="hint" style="padding:16px;">
-      Mode <b>Brief</b> : sélectionne un technicien à gauche.
-    </div>`;
-    return;
-  }
-
-  const techs = window.TECHNICIANS || [];
-  const t = techs.find(x => techKey(x) === state.filters.techId);
-  if (meta) meta.textContent = t ? `${t.name} — ${filtered.length} BT` : "";
-
-  renderBriefTimeline(filtered);
-
-  list.innerHTML = "";
-  if (filtered.length === 0) {
-    if (tlHost) tlHost.innerHTML = `<div class="hint" style="padding:16px;">Aucun BT à afficher sur la timeline.</div>`;
-    list.innerHTML = `<div class="hint" style="padding:16px;">Aucun BT pour ce technicien avec ces filtres.</div>`;
-    return;
-  }
-
-  for (const bt of filtered) {
-    const classification = classifyIntervention(bt);
-    
-    const card = document.createElement("div");
-    card.className = "card briefCard";
-    card.id = `briefCard-${bt.id}`;
-
-    const titleDiv = document.createElement("div");
-    titleDiv.style.display = "flex";
-    titleDiv.style.alignItems = "center";
-    titleDiv.style.gap = "12px";
-    titleDiv.style.marginBottom = "10px";
-    
-    const idSpan = document.createElement("div");
-    idSpan.className = "briefTitle";
-    idSpan.style.margin = "0";
-    idSpan.textContent = bt.id;
-    
-    const categoryBadge = document.createElement("div");
-    categoryBadge.style.cssText = `
-      display: inline-block;
-      padding: 6px 12px;
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      background: ${classification.color};
-      color: #fff;
-      box-shadow: 0 2px 8px ${classification.color}40;
-    `;
-    categoryBadge.textContent = classification.label;
-    
-    titleDiv.appendChild(idSpan);
-    titleDiv.appendChild(categoryBadge);
-
-    const subDiv = document.createElement("div");
-    subDiv.className = "briefSub";
-    const dureeFormatted = formatDuree(bt.duree);
-    subDiv.innerHTML = `
-      <div>📋 ${bt.objet || "—"}</div>
-      <div>📅 ${bt.datePrevue || "—"}</div>
-      ${dureeFormatted ? `<div>⏱️ ${dureeFormatted}</div>` : ""}
-      <div>👤 ${bt.client || "—"}</div>
-      <div>📍 ${bt.localisation || "—"}</div>
-      ${bt.atNum ? `<div>🧾 ${bt.atNum}</div>` : ""}
-    `;
-
-    const docsDiv = document.createElement("div");
-    docsDiv.className = "briefDocs";
-
-    // Créer un bouton pour chaque document
-    for (const doc of bt.docs || []) {
-      const btn = document.createElement("button");
-      btn.className = "docBtn";
-      btn.textContent = `${doc.type} (p.${doc.page})`;
-      btn.addEventListener("click", () => openModal(bt, doc.page));
-      docsDiv.appendChild(btn);
-    }
-
-    card.appendChild(titleDiv);
-    card.appendChild(subDiv);
-    card.appendChild(docsDiv);
-    list.appendChild(card);
-  }
-}
-
-// -------------------------
-// Modal viewer
-// -------------------------
-function openModal(bt, pageNum) {
-  state.modal.open = true;
-  state.modal.currentBT = bt;
-  state.modal.currentPage = pageNum;
-
-  const modal = $("modal");
-  if (modal) modal.setAttribute("aria-hidden", "false");
-
-  const title = $("modalTitle");
-  if (title) title.textContent = `${bt.id} — Page ${pageNum}`;
-
-  const subtitle = $("modalSubtitle");
-  if (subtitle) subtitle.textContent = bt.objet || "";
-
-  renderPage(pageNum);
-  updateModalNavigation();
-}
-
-function closeModal() {
-  state.modal.open = false;
-  state.modal.currentBT = null;
-
-  const modal = $("modal");
-  if (modal) modal.setAttribute("aria-hidden", "true");
-}
-
-function updateModalNavigation() {
-  const bt = state.modal.currentBT;
-  if (!bt) return;
-
-  const currentPage = state.modal.currentPage;
-  const btPages = bt.docs.map(d => d.page);
-  const minPage = Math.min(...btPages);
-  const maxPage = Math.max(...btPages);
-
-  const btnPrev = $("btnPrevPage");
-  const btnNext = $("btnNextPage");
-
-  if (btnPrev) {
-    btnPrev.disabled = currentPage <= minPage;
-  }
-
-  if (btnNext) {
-    btnNext.disabled = currentPage >= maxPage;
-  }
-
-  const info = $("modalInfo");
-  if (info) {
-    const pageIdx = btPages.indexOf(currentPage);
-    info.textContent = `Page ${currentPage} (${pageIdx + 1}/${btPages.length} du BT)`;
-  }
-}
-
-async function renderPage(pageNum) {
-  if (!state.pdf || pageNum < 1 || pageNum > state.totalPages) return;
-
-  const canvas = $("canvas");
-  if (!canvas) return;
-
-  const page = await state.pdf.getPage(pageNum);
-  const viewport = page.getViewport({ scale: 2.0 });
-
-  const ctx = canvas.getContext("2d");
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-
-  await page.render({ canvasContext: ctx, viewport }).promise;
-
-  const title = $("modalTitle");
-  if (title && state.modal.currentBT) {
-    title.textContent = `${state.modal.currentBT.id} — Page ${pageNum}`;
-  }
-
-  state.modal.currentPage = pageNum;
-  updateModalNavigation();
-}
-
-function nextPage() {
-  if (!state.modal.open || !state.modal.currentBT) return;
-  
-  const bt = state.modal.currentBT;
-  const btPages = bt.docs.map(d => d.page).sort((a, b) => a - b);
-  const currentIdx = btPages.indexOf(state.modal.currentPage);
-  
-  if (currentIdx < btPages.length - 1) {
-    renderPage(btPages[currentIdx + 1]);
-  }
-}
-
-function prevPage() {
-  if (!state.modal.open || !state.modal.currentBT) return;
-  
-  const bt = state.modal.currentBT;
-  const btPages = bt.docs.map(d => d.page).sort((a, b) => a - b);
-  const currentIdx = btPages.indexOf(state.modal.currentPage);
-  
-  if (currentIdx > 0) {
-    renderPage(btPages[currentIdx - 1]);
-  }
-}
-
-// Export BT complet en PDF
-async function exportBTPDF() {
-  if (!state.modal.currentBT || !window.PDFLib) {
-    alert("Impossible d'exporter : pdf-lib non chargé");
-    return;
-  }
-
-  try {
-    const bt = state.modal.currentBT;
-    const pages = bt.docs.map(d => d.page);
-
-    // Charger le PDF original
-    const arrayBuf = await state.pdfFile.arrayBuffer();
-    const pdfDoc = await window.PDFLib.PDFDocument.load(arrayBuf);
-
-    // Créer un nouveau PDF
-    const newPdf = await window.PDFLib.PDFDocument.create();
-
-    // Copier les pages du BT
-    for (const pageNum of pages) {
-      const [copiedPage] = await newPdf.copyPages(pdfDoc, [pageNum - 1]);
-      newPdf.addPage(copiedPage);
-    }
-
-    // Sauvegarder
-    const pdfBytes = await newPdf.save();
-    const blob = new Blob([pdfBytes], { type: "application/pdf" });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${bt.id}_export.pdf`;
-    a.click();
-
-    URL.revokeObjectURL(url);
-  } catch (e) {
-    console.error("Erreur export PDF:", e);
-    alert("Erreur lors de l'export PDF");
-  }
-}
-
-// -------------------------
-// Render global + switch vues
-// -------------------------
-function setView(view) {
-  state.view = view;
-
-  const vRef = $("viewReferent");
-  const vBrief = $("viewBrief");
-
-  if (vRef) vRef.classList.toggle("view--active", view === "referent");
-  if (vBrief) vBrief.classList.toggle("view--active", view === "brief");
-
-  // boutons seg
-  document.querySelectorAll(".seg__btn[data-view]").forEach(b => {
-    b.classList.toggle("seg__btn--active", b.getAttribute("data-view") === view);
+  el.btnView.addEventListener("click", async () => {
+    if (!state.arrayBuffer) return;
+    setStatusPdf("Chargement PDF…");
+    await loadPdfFromArrayBuffer(state.arrayBuffer);
+    setStatusPdf(`${state.file.name} • ${humanFileSize(state.file.size)}`);
   });
 
-  // Toggle flip mode for brief
-  if (view === "brief") {
-    document.body.classList.add("flip");
-  } else {
-    document.body.classList.remove("flip");
-  }
+  el.btnExtract.addEventListener("click", async () => {
+    if (!state.arrayBuffer) return;
 
-  renderAll();
-}
+    // S’assure que le PDF est chargé
+    if (!state.pdfDoc) await loadPdfFromArrayBuffer(state.arrayBuffer);
+    if (!state.pdfDoc) return;
 
-function renderAll() {
-  buildTechSelectWithCounts();
+    state.extractedText = await extractAllText();
+    state.btItems = buildBtListFromText(state.extractedText);
+    state.selectedBtId = state.btItems[0]?.id ?? null;
 
-  const filtered = state.bts.filter(matchesFilters);
+    renderBtList();
+    if (state.selectedBtId) selectBt(state.selectedBtId);
 
-  renderKpis(filtered);
-
-  if (state.view === "referent") {
-    renderReferent(filtered);
-  } else {
-    // en brief : filtrage tech obligatoire (sinon message)
-    renderBrief(filtered);
-  }
-}
-
-// -------------------------
-// Wiring events
-// -------------------------
-function wireEvents() {
-  // Search
-  const search = $("searchInput");
-  if (search) {
-    search.addEventListener("input", () => {
-      state.filters.q = search.value || "";
-      renderAll();
-    });
-  }
-
-  // Tech select
-  const sel = $("techSelect");
-  if (sel) {
-    sel.addEventListener("change", () => {
-      state.filters.techId = sel.value || "";
-      renderAll();
-    });
-  }
-
-  // View switch
-  document.querySelectorAll(".seg__btn[data-view]").forEach(b => {
-    b.addEventListener("click", () => {
-      setView(b.getAttribute("data-view"));
-    });
+    setStatusExtract(`BT détectés : ${state.btItems.length}`);
   });
 
-  // Layout switch (grid/timeline)
-  document.querySelectorAll(".seg__btn[data-layout]").forEach(b => {
-    b.addEventListener("click", () => {
-      const layout = b.getAttribute("data-layout");
-      state.layout = layout;
-      
-      // Update button states
-      document.querySelectorAll(".seg__btn[data-layout]").forEach(btn => {
-        btn.classList.toggle("seg__btn--active", btn.getAttribute("data-layout") === layout);
-      });
-      
-      renderAll();
-    });
+  el.btnPrev.addEventListener("click", async () => {
+    if (!state.pdfDoc || state.pageNumber <= 1) return;
+    state.pageNumber--;
+    await renderPage(state.pageNumber);
   });
 
-  // Import PDF
-  const input = $("pdfFile");
-  if (input) {
-    input.addEventListener("change", async () => {
-      const f = input.files && input.files[0];
-      if (!f) return;
-
-      try {
-        setExtractEnabled(false);
-        setPdfStatus(f.name);
-        setProgress(0, "Chargement PDF…");
-
-        await ensurePdfJs();
-
-        state.pdfFile = f;
-        state.pdfName = f.name;
-
-        const buf = await f.arrayBuffer();
-        const loadingTask = window.pdfjsLib.getDocument({ data: buf });
-        state.pdf = await loadingTask.promise;
-        state.totalPages = state.pdf.numPages;
-
-        console.log("[DEMAT-BT] PDF chargé ✅", state.totalPages, "pages");
-        setProgress(0, `PDF chargé (${state.totalPages} pages).`);
-        setExtractEnabled(true);
-
-        // Statut topbar
-        setTopbarStatus('LOADED', f.name);
-        setTopbarMeta('PDF chargé — prêt à extraire');
-      } catch (e) {
-        console.error(e);
-        setPdfStatus("Erreur PDF");
-        setTopbarStatus('ERROR', "Erreur chargement PDF");
-        setTopbarMeta("Erreur PDF");
-        setProgress(0, "Erreur chargement PDF (voir console).");
-        setExtractEnabled(false);
-      }
-    });
-  }
-
-  // Extract
-  const btn = $("btnExtract");
-  if (btn) {
-    btn.addEventListener("click", async () => {
-      try {
-        if (!state.pdf) { setProgress(0, "Choisis d'abord un PDF."); return; }
-        setExtractEnabled(false);
-        setProgress(0, "Extraction en cours…");
-        await extractAll();
-      } catch (e) {
-        console.error(e);
-        setProgress(0, "Erreur extraction (voir console).");
-      } finally {
-        setExtractEnabled(!!state.pdf);
-      }
-    });
-  }
-
-  // Modal close
-  const modal = $("modal");
-  if (modal) {
-    modal.addEventListener("click", (e) => {
-      if (e.target.hasAttribute("data-close") || e.target.classList.contains("modal__backdrop")) {
-        closeModal();
-      }
-    });
-  }
-
-  // Modal navigation
-  const btnPrev = $("btnPrevPage");
-  if (btnPrev) btnPrev.addEventListener("click", prevPage);
-
-  const btnNext = $("btnNextPage");
-  if (btnNext) btnNext.addEventListener("click", nextPage);
-
-  // Modal export
-  const btnExport = $("btnExportBt");
-  if (btnExport) btnExport.addEventListener("click", exportBTPDF);
-
-  // Fullscreen
-  const btnFS = $("btnFullscreen");
-  if (btnFS) {
-    btnFS.addEventListener("click", () => {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen();
-      } else {
-        document.exitFullscreen();
-      }
-    });
-  }
-
-  // Keyboard navigation dans modal
-  document.addEventListener("keydown", (e) => {
-    if (!state.modal.open) return;
-    
-    if (e.key === "ArrowLeft") prevPage();
-    if (e.key === "ArrowRight") nextPage();
-    if (e.key === "Escape") closeModal();
+  el.btnNext.addEventListener("click", async () => {
+    if (!state.pdfDoc || state.pageNumber >= state.pageCount) return;
+    state.pageNumber++;
+    await renderPage(state.pageNumber);
   });
 }
 
-// -------------------------
-// Init
-// -------------------------
-async function init() {
-  const v = document.getElementById("appVersion");
-  if (v) v.textContent = `v${APP_VERSION}`;
-  try {
-    setPdfStatus("Aucun PDF chargé");
-    setProgress(0, "Prêt.");
-    setExtractEnabled(false);
+/* -------------------- INIT -------------------- */
+function init(){
+  el.appVersion.textContent = APP_VERSION;
+  setNowInfo();
+  setInterval(setNowInfo, 15_000);
 
-    // Temps réel (topbar) + statut
-    startTopbarClock();
-    setTopbarStatus('WAIT');
-    setTopbarMeta('En attente du PDF');
+  renderTimeline();
+  renderBtList();
+  setButtonsEnabled();
 
-    buildTypeChips();
-    wireEvents();
-
-    await loadZones();
-
-    // vue par défaut
-    setView("referent");
-  } catch (e) {
-    console.error(e);
-    setZonesStatus("Erreur");
-    setProgress(0, "Erreur init (voir console).");
-  }
+  wireEvents();
 }
 
 document.addEventListener("DOMContentLoaded", init);
