@@ -69,74 +69,6 @@ function safeUpper(s) {
   return norm(s).toUpperCase();
 }
 
-
-
-// -------------------------
-// Topbar clock + status (Temps réel)
-// -------------------------
-const TOPBAR_STATUS = {
-  WAIT:  { cls: "tbDot--wait",  label: "En attente du PDF" },
-  LOADED:{ cls: "tbDot--loaded",label: "PDF chargé" },
-  DONE:  { cls: "tbDot--done",  label: "BT extraits" },
-  ERROR: { cls: "tbDot--error", label: "Erreur" }
-};
-
-function formatDateFR(d) {
-  // Ex: "lundi 26 janvier 2026"
-  try {
-    return d.toLocaleDateString("fr-FR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-  } catch {
-    // fallback
-    const pad = (n) => String(n).padStart(2, "0");
-    return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`;
-  }
-}
-
-function formatTimeFR(d) {
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function setTopbarStatus(kind, titleOverride) {
-  const dot = $("tbDot");
-  if (!dot) return;
-
-  // remove known classes
-  dot.classList.remove(
-    TOPBAR_STATUS.WAIT.cls,
-    TOPBAR_STATUS.LOADED.cls,
-    TOPBAR_STATUS.DONE.cls,
-    TOPBAR_STATUS.ERROR.cls
-  );
-
-  const entry = TOPBAR_STATUS[kind] || TOPBAR_STATUS.WAIT;
-  dot.classList.add(entry.cls);
-  dot.title = titleOverride || entry.label;
-}
-
-function setTopbarMeta(text) {
-  const meta = $("tbMeta");
-  if (meta) meta.textContent = text || "";
-}
-
-function updateTopbarClock() {
-  const main = $("tbDateTime");
-  if (!main) return;
-  const now = new Date();
-  main.textContent = `Journée du ${formatDateFR(now)} — ${formatTimeFR(now)}`;
-  // meta stays whatever status message is
-}
-
-function startTopbarClock() {
-  updateTopbarClock();
-  // refresh every minute (align to minute boundary)
-  const now = new Date();
-  const msToNextMinute = (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
-  setTimeout(() => {
-    updateTopbarClock();
-    setInterval(updateTopbarClock, 60 * 1000);
-  }, Math.max(250, msToNextMinute));
-}
 // -------------------------
 // Load zones.json
 // -------------------------
@@ -462,9 +394,6 @@ async function extractAll() {
 
   setProgress(100, `Terminé : ${state.bts.length} BT détectés.`);
   console.log("[DEMAT-BT] Extraction OK ✅", state.bts.length, "BT");
-  // Statut topbar
-  setTopbarStatus('DONE');
-  setTopbarMeta(`BT extraits : ${state.bts.length}`);
   renderAll();
 }
 
@@ -715,11 +644,29 @@ function renderTimeline(filtered, timeline) {
     return;
   }
 
-  // Définir les heures de travail (8h-18h)
-  const hours = [];
-  for (let h = 8; h <= 17; h++) {
-    hours.push({ start: h, end: h + 1, label: `${h}h-${h+1}h` });
+  // Définir les quarts d'heure (7h30 à 17h00) - une colonne toutes les 15 minutes
+  const timeSlots = [];
+  
+  // Commencer à 7h30
+  timeSlots.push({ time: 7.5, label: "7h30", isHour: false });
+  timeSlots.push({ time: 7.75, label: "45", isHour: false });
+  
+  // Puis de 8h à 16h (heures complètes)
+  for (let h = 8; h <= 16; h++) {
+    for (let m = 0; m < 60; m += 15) {
+      const time = h + m / 60;
+      let label = "";
+      if (m === 0) {
+        label = `${h}h`;
+      } else {
+        label = `${m}`;
+      }
+      timeSlots.push({ time, label, isHour: m === 0 });
+    }
   }
+  
+  // Terminer à 17h00
+  timeSlots.push({ time: 17, label: "17h", isHour: true });
 
   // Récupérer tous les techniciens qui ont des BT
   const techSet = new Map();
@@ -760,71 +707,14 @@ function renderTimeline(filtered, timeline) {
     }
   }
 
-  // Calculer le nombre de sous-lignes nécessaires pour chaque technicien
-  const techRowCounts = new Map();
-  for (const [techId, techBTs] of btsByTech.entries()) {
-    // Préparer les BT avec leurs créneaux
-    const btsWithSlots = techBTs.map(bt => {
-      const timeSlot = extractTimeSlot(bt);
-      let startCol, endCol;
-      
-      if (timeSlot) {
-        let startHour = Math.max(8, Math.min(17, timeSlot.start));
-        let endHour = Math.max(8, Math.min(18, timeSlot.end));
-        startCol = Math.floor(startHour - 8) + 2;
-        endCol = Math.ceil(endHour - 8) + 2;
-      } else {
-        startCol = 2;
-        endCol = 4;
-      }
-      
-      return { bt, startCol, endCol, timeSlot };
-    });
-    
-    // Détecter les chevauchements et assigner des tracks
-    const tracks = [];
-    for (const item of btsWithSlots) {
-      let placed = false;
-      for (let trackIdx = 0; trackIdx < tracks.length; trackIdx++) {
-        const track = tracks[trackIdx];
-        const hasOverlap = track.some(existing => 
-          !(item.endCol <= existing.startCol || item.startCol >= existing.endCol)
-        );
-        
-        if (!hasOverlap) {
-          track.push(item);
-          item.track = trackIdx;
-          placed = true;
-          break;
-        }
-      }
-      
-      if (!placed) {
-        tracks.push([item]);
-        item.track = tracks.length - 1;
-      }
-    }
-    
-    techRowCounts.set(techId, { count: tracks.length, btsWithSlots });
-  }
-
-  // Calculer le total de rows
-  let totalRows = 0;
-  const techRowStarts = new Map();
-  for (const [techId] of techs) {
-    techRowStarts.set(techId, totalRows + 2); // +2 pour le header
-    const rowCount = techRowCounts.get(techId)?.count || 1;
-    totalRows += rowCount;
-  }
-
-  // Créer la grille
+  // Créer la grille - 1 ligne par technicien, 1 colonne toutes les 15min
   const container = document.createElement("div");
   container.style.cssText = "position:relative; overflow-x:auto; background:#fff; border-radius:var(--radius); border:1.5px solid var(--line); box-shadow:var(--shadow);";
 
   const grid = document.createElement("div");
   grid.className = "timeline-grid";
-  grid.style.gridTemplateColumns = `180px repeat(${hours.length}, minmax(100px, 1fr))`;
-  grid.style.gridTemplateRows = `50px repeat(${totalRows}, 70px)`;
+  grid.style.gridTemplateColumns = `180px repeat(${timeSlots.length}, minmax(50px, 1fr))`;
+  grid.style.gridTemplateRows = `50px repeat(${techs.length}, 70px)`;
   grid.style.position = "relative";
 
   // Header
@@ -836,25 +726,28 @@ function renderTimeline(filtered, timeline) {
   corner.textContent = "Techniciens";
   header.appendChild(corner);
 
-  for (let i = 0; i < hours.length; i++) {
+  for (let i = 0; i < timeSlots.length; i++) {
+    const slot = timeSlots[i];
     const hourCell = document.createElement("div");
     hourCell.className = "timeline-hour";
     hourCell.style.gridColumn = i + 2;
-    hourCell.textContent = hours[i].label;
+    hourCell.style.fontSize = slot.isHour ? "11px" : "9px";
+    hourCell.style.fontWeight = slot.isHour ? "700" : "600";
+    hourCell.style.color = slot.isHour ? "var(--txt)" : "var(--muted)";
+    hourCell.textContent = slot.label; // Afficher tous les labels
     header.appendChild(hourCell);
   }
 
   grid.appendChild(header);
 
-  // Lignes: techniciens + cellules vides
-  techs.forEach(([techId, techName]) => {
-    const rowStart = techRowStarts.get(techId);
-    const rowCount = techRowCounts.get(techId)?.count || 1;
+  // Lignes: techniciens + cellules + BT
+  techs.forEach(([techId, techName], techIdx) => {
+    const rowNum = techIdx + 2;
     
-    // Nom du technicien (span sur toutes ses rows)
+    // Nom du technicien
     const techCell = document.createElement("div");
     techCell.className = "timeline-tech";
-    techCell.style.gridRow = `${rowStart} / span ${rowCount}`;
+    techCell.style.gridRow = rowNum;
     
     const avatar = document.createElement("div");
     avatar.className = "timeline-tech-avatar";
@@ -869,105 +762,140 @@ function renderTimeline(filtered, timeline) {
     techCell.appendChild(nameDiv);
     grid.appendChild(techCell);
 
-    // Cellules vides
-    for (let rowIdx = 0; rowIdx < rowCount; rowIdx++) {
-      for (let hourIdx = 0; hourIdx < hours.length; hourIdx++) {
-        const cell = document.createElement("div");
-        cell.className = "timeline-cell";
-        cell.style.gridRow = rowStart + rowIdx;
-        cell.style.gridColumn = hourIdx + 2;
-        grid.appendChild(cell);
+    // Cellules vides pour chaque quart d'heure
+    for (let slotIdx = 0; slotIdx < timeSlots.length; slotIdx++) {
+      const cell = document.createElement("div");
+      cell.className = "timeline-cell";
+      cell.style.gridRow = rowNum;
+      cell.style.gridColumn = slotIdx + 2;
+      // Bordure plus épaisse toutes les heures
+      if (timeSlots[slotIdx].isHour) {
+        cell.style.borderLeft = "2px solid var(--line-strong)";
       }
+      grid.appendChild(cell);
     }
 
-    // Ajouter les BT
-    const techData = techRowCounts.get(techId);
-    if (techData) {
-      for (const item of techData.btsWithSlots) {
-        const { bt, startCol, endCol, timeSlot, track } = item;
-        const classification = classifyIntervention(bt);
-        const colSpan = Math.max(1, endCol - startCol);
-        
-        // Debug pour le premier BT
-        if (item === techData.btsWithSlots[0]) {
-          console.log(`[${techName}] BT ${bt.id}:`, {
-            designation: bt.designation,
-            duree: bt.duree,
-            timeSlot,
-            startCol,
-            endCol,
-            colSpan,
-            track
-          });
-        }
-        
-        const btDiv = document.createElement("div");
-        btDiv.className = "timeline-bt-block";
-        btDiv.style.cssText = `
-          grid-row: ${rowStart + track};
-          grid-column: ${startCol} / span ${colSpan};
-          background: ${classification.color}20;
-          border: 2px solid ${classification.color};
-          border-radius: var(--radius-xs);
-          padding: 6px 8px;
-          cursor: pointer;
-          transition: var(--transition);
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-          min-height: 50px;
-          justify-content: center;
-        `;
-        
-        const idDiv = document.createElement("div");
-        idDiv.style.cssText = `
-          font-weight: 800;
-          font-size: 11px;
-          color: ${classification.color};
-          line-height: 1.2;
-        `;
-        idDiv.textContent = bt.id;
-        
-        const typeDiv = document.createElement("div");
-        typeDiv.style.cssText = `
-          font-size: 9px;
-          font-weight: 700;
-          color: ${classification.color};
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          line-height: 1.2;
-        `;
-        typeDiv.textContent = classification.label;
-        
-        btDiv.appendChild(idDiv);
-        btDiv.appendChild(typeDiv);
-        
-        if (timeSlot && colSpan >= 3) {
-          const timeDiv = document.createElement("div");
-          timeDiv.style.cssText = `
-            font-size: 8px;
-            color: ${classification.color}CC;
-            margin-top: 2px;
-          `;
-          timeDiv.textContent = timeSlot.text;
-          btDiv.appendChild(timeDiv);
-        }
-        
-        btDiv.addEventListener("click", () => openModal(bt, bt.pageStart));
-        btDiv.addEventListener("mouseenter", () => {
-          btDiv.style.transform = "translateY(-2px)";
-          btDiv.style.boxShadow = "var(--shadow)";
-          btDiv.style.zIndex = "10";
+    // Ajouter les BT pour ce technicien
+    const techBTs = btsByTech.get(techId) || [];
+    
+    techBTs.forEach((bt, btIndex) => {
+      const timeSlot = extractTimeSlot(bt);
+      const classification = classifyIntervention(bt);
+      
+      // Debug pour le premier BT
+      if (btIndex === 0) {
+        console.log(`[${techName}] BT ${bt.id}:`, {
+          designation: bt.designation,
+          duree: bt.duree,
+          timeSlot
         });
-        btDiv.addEventListener("mouseleave", () => {
-          btDiv.style.transform = "translateY(0)";
-          btDiv.style.boxShadow = "none";
-          btDiv.style.zIndex = "1";
-        });
-        
-        grid.appendChild(btDiv);
       }
-    }
+      
+      let startCol, colSpan;
+      
+      if (timeSlot) {
+        // Utiliser les heures réelles avec précision au quart d'heure
+        let startTime = Math.max(7.5, Math.min(17, timeSlot.start));
+        let endTime = Math.max(7.5, Math.min(17, timeSlot.end));
+        
+        // Arrondir au quart d'heure le plus proche
+        // 1 quart d'heure = 0.25h
+        const roundToQuarter = (time) => Math.round(time * 4) / 4;
+        startTime = roundToQuarter(startTime);
+        endTime = roundToQuarter(endTime);
+        
+        // Calculer l'index de colonne (4 colonnes par heure, début à 7h30)
+        // 7h30 = index 0 = col 2
+        // 7h45 = index 1 = col 3
+        // 8h00 = index 2 = col 4
+        // 8h15 = index 3 = col 5
+        // 9h00 = index 6 = col 8
+        const startIdx = Math.round((startTime - 7.5) * 4);
+        const endIdx = Math.round((endTime - 7.5) * 4);
+        
+        startCol = startIdx + 2;
+        colSpan = Math.max(1, endIdx - startIdx);
+      } else {
+        // Pas d'horaire trouvé, placement automatique équilibré
+        const slotsPerBT = Math.floor(timeSlots.length / (techBTs.length || 1));
+        startCol = btIndex * slotsPerBT + 2;
+        colSpan = Math.max(1, slotsPerBT);
+        
+        // Ne pas dépasser la fin
+        if (startCol + colSpan > timeSlots.length + 2) {
+          startCol = timeSlots.length + 2 - colSpan;
+        }
+      }
+      
+      const btDiv = document.createElement("div");
+      btDiv.className = "timeline-bt-block";
+      btDiv.style.cssText = `
+        grid-row: ${rowNum};
+        grid-column: ${startCol} / span ${colSpan};
+        background: ${classification.color};
+        border: 2px solid ${classification.color};
+        border-radius: 8px;
+        padding: 8px 10px;
+        cursor: pointer;
+        transition: var(--transition);
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-height: 50px;
+        justify-content: center;
+        z-index: 1;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      `;
+      
+      const idDiv = document.createElement("div");
+      idDiv.style.cssText = `
+        font-weight: 800;
+        font-size: 11px;
+        color: #fff;
+        line-height: 1.2;
+      `;
+      idDiv.textContent = bt.id;
+      
+      const typeDiv = document.createElement("div");
+      typeDiv.style.cssText = `
+        font-size: 9px;
+        font-weight: 700;
+        color: rgba(255,255,255,0.95);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        line-height: 1.2;
+      `;
+      typeDiv.textContent = classification.label;
+      
+      btDiv.appendChild(idDiv);
+      btDiv.appendChild(typeDiv);
+      
+      if (timeSlot && colSpan >= 4) {
+        const timeDiv = document.createElement("div");
+        timeDiv.style.cssText = `
+          font-size: 8px;
+          color: rgba(255,255,255,0.85);
+          margin-top: 2px;
+          font-weight: 600;
+        `;
+        timeDiv.textContent = timeSlot.text;
+        btDiv.appendChild(timeDiv);
+      }
+      
+      btDiv.addEventListener("click", () => openModal(bt, bt.pageStart));
+      btDiv.addEventListener("mouseenter", () => {
+        btDiv.style.transform = "translateY(-2px) scale(1.02)";
+        btDiv.style.boxShadow = "0 4px 12px rgba(0,0,0,0.25)";
+        btDiv.style.zIndex = "10";
+      });
+      btDiv.addEventListener("mouseleave", () => {
+        btDiv.style.transform = "translateY(0) scale(1)";
+        btDiv.style.boxShadow = "0 2px 6px rgba(0,0,0,0.15)";
+        btDiv.style.zIndex = "1";
+      });
+      
+      grid.appendChild(btDiv);
+    });
   });
 
   container.appendChild(grid);
@@ -1323,15 +1251,9 @@ function wireEvents() {
         console.log("[DEMAT-BT] PDF chargé ✅", state.totalPages, "pages");
         setProgress(0, `PDF chargé (${state.totalPages} pages).`);
         setExtractEnabled(true);
-
-        // Statut topbar
-        setTopbarStatus('LOADED', f.name);
-        setTopbarMeta('PDF chargé — prêt à extraire');
       } catch (e) {
         console.error(e);
         setPdfStatus("Erreur PDF");
-        setTopbarStatus('ERROR', "Erreur chargement PDF");
-        setTopbarMeta("Erreur PDF");
         setProgress(0, "Erreur chargement PDF (voir console).");
         setExtractEnabled(false);
       }
@@ -1407,11 +1329,6 @@ async function init() {
     setPdfStatus("Aucun PDF chargé");
     setProgress(0, "Prêt.");
     setExtractEnabled(false);
-
-    // Temps réel (topbar) + statut
-    startTopbarClock();
-    setTopbarStatus('WAIT');
-    setTopbarMeta('En attente du PDF');
 
     buildTypeChips();
     wireEvents();
