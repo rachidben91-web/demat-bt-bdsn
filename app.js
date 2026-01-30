@@ -400,7 +400,111 @@ async function extractAll() {
 
   setProgress(100, `Terminé : ${state.bts.length} BT détectés.`);
   console.log("[DEMAT-BT] Extraction OK ✅", state.bts.length, "BT");
+  
+  // Sauvegarder dans localStorage
+  saveToCache();
+  
   renderAll();
+}
+
+// -------------------------
+// Système de cache localStorage
+// -------------------------
+function saveToCache() {
+  try {
+    const cacheData = {
+      timestamp: Date.now(),
+      pdfName: state.pdfName,
+      totalPages: state.totalPages,
+      bts: state.bts,
+      countsByTechId: Array.from(state.countsByTechId.entries())
+    };
+    
+    localStorage.setItem('dematbt_cache', JSON.stringify(cacheData));
+    console.log("[CACHE] Données sauvegardées ✅", state.bts.length, "BT");
+    
+    // Afficher un message de confirmation
+    const msg = $("progMsg");
+    if (msg) {
+      const oldText = msg.textContent;
+      msg.textContent = "💾 Données sauvegardées (disponibles après rechargement)";
+      setTimeout(() => {
+        msg.textContent = oldText;
+      }, 3000);
+    }
+  } catch (err) {
+    console.error("[CACHE] Erreur sauvegarde:", err);
+  }
+}
+
+function loadFromCache() {
+  try {
+    const cached = localStorage.getItem('dematbt_cache');
+    if (!cached) return false;
+    
+    const cacheData = JSON.parse(cached);
+    
+    // Vérifier que les données ne sont pas trop anciennes (24h max)
+    const age = Date.now() - cacheData.timestamp;
+    const maxAge = 24 * 60 * 60 * 1000; // 24 heures
+    
+    if (age > maxAge) {
+      console.log("[CACHE] Données expirées (>24h), suppression");
+      clearCache();
+      return false;
+    }
+    
+    // Restaurer l'état
+    state.pdfName = cacheData.pdfName;
+    state.totalPages = cacheData.totalPages;
+    state.bts = cacheData.bts;
+    state.countsByTechId = new Map(cacheData.countsByTechId);
+    
+    // Mettre à jour l'interface
+    setPdfStatus(`📦 ${cacheData.pdfName} (chargé depuis cache)`);
+    setProgress(100, `Cache: ${state.bts.length} BT chargés`);
+    
+    console.log("[CACHE] Données restaurées ✅", state.bts.length, "BT");
+    
+    // Afficher un message d'info
+    const msg = $("progMsg");
+    if (msg) {
+      msg.innerHTML = `💾 Cache restauré : ${state.bts.length} BT<br/><small style="font-size:10px;opacity:0.7;">Dernière extraction: ${new Date(cacheData.timestamp).toLocaleString('fr-FR')}</small>`;
+    }
+    
+    renderAll();
+    return true;
+  } catch (err) {
+    console.error("[CACHE] Erreur chargement:", err);
+    clearCache();
+    return false;
+  }
+}
+
+function clearCache() {
+  localStorage.removeItem('dematbt_cache');
+  console.log("[CACHE] Cache vidé");
+}
+
+function getCacheInfo() {
+  try {
+    const cached = localStorage.getItem('dematbt_cache');
+    if (!cached) return null;
+    
+    const cacheData = JSON.parse(cached);
+    const age = Date.now() - cacheData.timestamp;
+    const ageHours = Math.floor(age / (60 * 60 * 1000));
+    const ageMinutes = Math.floor((age % (60 * 60 * 1000)) / (60 * 1000));
+    
+    return {
+      pdfName: cacheData.pdfName,
+      btCount: cacheData.bts.length,
+      timestamp: cacheData.timestamp,
+      age: `${ageHours}h ${ageMinutes}min`
+    };
+  } catch {
+    return null;
+  }
 }
 
 // -------------------------
@@ -973,16 +1077,48 @@ function renderBrief(filtered) {
     const subDiv = document.createElement("div");
     subDiv.className = "briefSub";
     const dureeFormatted = formatDuree(bt.duree);
-    subDiv.innerHTML = `
+    
+    // Informations principales en haut
+    const mainInfoDiv = document.createElement("div");
+    mainInfoDiv.className = "briefSub__main";
+    mainInfoDiv.innerHTML = `
       <div>📋 ${bt.objet || "—"}</div>
       <div>📅 ${bt.datePrevue || "—"}</div>
       ${dureeFormatted ? `<div>⏱️ ${dureeFormatted}</div>` : ""}
       <div>👤 ${bt.client || "—"}</div>
       <div>📍 ${bt.localisation || "—"}</div>
       ${bt.atNum ? `<div>🧾 ${bt.atNum}</div>` : ""}
-      ${bt.analyseDesRisques ? `<div style="margin-top: 8px; padding: 8px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px;"><strong style="color: #f59e0b;">⚠️ Analyse des risques :</strong><br/><span style="font-size: 12px; color: #78350f;">${bt.analyseDesRisques}</span></div>` : ""}
-      ${bt.observations ? `<div style="margin-top: 8px; padding: 8px; background: #dbeafe; border-left: 3px solid #3b82f6; border-radius: 4px;"><strong style="color: #3b82f6;">💬 Observations :</strong><br/><span style="font-size: 12px; color: #1e3a8a;">${bt.observations}</span></div>` : ""}
     `;
+    
+    subDiv.appendChild(mainInfoDiv);
+    
+    // Analyse des risques et observations en bas côte à côte
+    if (bt.analyseDesRisques || bt.observations) {
+      const bottomBlocksDiv = document.createElement("div");
+      bottomBlocksDiv.className = "briefSub__bottom";
+      
+      if (bt.analyseDesRisques) {
+        const analyseDiv = document.createElement("div");
+        analyseDiv.className = "briefSub__block briefSub__block--warning";
+        analyseDiv.innerHTML = `
+          <div class="briefSub__block-title">⚠️ Analyse des risques</div>
+          <div class="briefSub__block-content">${bt.analyseDesRisques}</div>
+        `;
+        bottomBlocksDiv.appendChild(analyseDiv);
+      }
+      
+      if (bt.observations) {
+        const obsDiv = document.createElement("div");
+        obsDiv.className = "briefSub__block briefSub__block--info";
+        obsDiv.innerHTML = `
+          <div class="briefSub__block-title">💬 Observations</div>
+          <div class="briefSub__block-content">${bt.observations}</div>
+        `;
+        bottomBlocksDiv.appendChild(obsDiv);
+      }
+      
+      subDiv.appendChild(bottomBlocksDiv);
+    }
 
     const docsDiv = document.createElement("div");
     docsDiv.className = "briefDocs";
@@ -1319,6 +1455,43 @@ function wireEvents() {
     });
   }
 
+  // Clear cache
+  const btnClearCache = $("btnClearCache");
+  if (btnClearCache) {
+    btnClearCache.addEventListener("click", () => {
+      const cacheInfo = getCacheInfo();
+      if (!cacheInfo) {
+        alert("Aucun cache à vider.");
+        return;
+      }
+      
+      const confirmMsg = `Vider le cache ?\n\n` +
+        `PDF: ${cacheInfo.pdfName}\n` +
+        `BT: ${cacheInfo.btCount}\n` +
+        `Âge: ${cacheInfo.age}\n\n` +
+        `Cette action est irréversible.`;
+      
+      if (confirm(confirmMsg)) {
+        clearCache();
+        
+        // Réinitialiser l'état
+        state.bts = [];
+        state.countsByTechId = new Map();
+        state.pdf = null;
+        state.pdfFile = null;
+        state.pdfName = "";
+        state.totalPages = 0;
+        
+        // Mettre à jour l'interface
+        setPdfStatus("Aucun PDF chargé");
+        setProgress(0, "Cache vidé.");
+        renderAll();
+        
+        alert("✅ Cache vidé avec succès !");
+      }
+    });
+  }
+
   // Keyboard navigation dans modal
   document.addEventListener("keydown", (e) => {
     if (!state.modal.open) return;
@@ -1478,6 +1651,15 @@ async function init() {
     // Mise à jour météo
     updateWeather();
     setInterval(updateWeather, 600000); // MAJ toutes les 10 minutes
+
+    // Tenter de charger le cache
+    const cacheLoaded = loadFromCache();
+    
+    if (cacheLoaded) {
+      console.log("[INIT] Données chargées depuis le cache ✅");
+    } else {
+      console.log("[INIT] Aucun cache disponible");
+    }
 
     // vue par défaut
     setView("referent");

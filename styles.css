@@ -746,9 +746,70 @@ body{
   color:var(--muted); 
   margin-bottom:12px;
   display:flex; 
-  flex-direction:column; 
-  gap:6px;
+  flex-direction: column;
+  gap:14px;
   font-weight:500;
+}
+
+.briefSub__main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.briefSub__bottom {
+  display: flex;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.briefSub__block {
+  flex: 1;
+  border-radius: 8px;
+  padding: 12px 14px;
+  border: 2px solid;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  min-height: 100px;
+}
+
+.briefSub__block--warning {
+  background: #fef3c7;
+  border-color: #f59e0b;
+}
+
+.briefSub__block--info {
+  background: #dbeafe;
+  border-color: #3b82f6;
+}
+
+.briefSub__block-title {
+  font-weight: 700;
+  font-size: 11px;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.briefSub__block--warning .briefSub__block-title {
+  color: #f59e0b;
+}
+
+.briefSub__block--info .briefSub__block-title {
+  color: #3b82f6;
+}
+
+.briefSub__block-content {
+  font-size: 11px;
+  line-height: 1.6;
+  font-weight: 500;
+}
+
+.briefSub__block--warning .briefSub__block-content {
+  color: #78350f;
+}
+
+.briefSub__block--info .briefSub__block-content {
+  color: #1e3a8a;
 }
 
 .briefSub > div{ 
@@ -914,6 +975,21 @@ body.flip .briefTitle{
 
 body.flip .briefSub{ 
   font-size:15px; 
+  gap: 18px;
+}
+
+body.flip .briefSub__block {
+  padding: 14px 16px;
+}
+
+body.flip .briefSub__block-title {
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+body.flip .briefSub__block-content {
+  font-size: 13px;
+  line-height: 1.7;
 }
 
 body.flip .docBtn{ 
@@ -943,6 +1019,16 @@ body.flip .kpi{
   .sidebar{ 
     height:auto; 
     position:static;
+  }
+}
+
+@media (max-width: 768px){
+  .briefSub__bottom {
+    flex-direction: column;
+  }
+  
+  .briefSub__block {
+    min-height: auto;
   }
 }
 
