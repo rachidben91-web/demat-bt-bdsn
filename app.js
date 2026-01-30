@@ -1078,7 +1078,7 @@ function renderBrief(filtered) {
     subDiv.className = "briefSub";
     const dureeFormatted = formatDuree(bt.duree);
     
-    // Informations principales à gauche
+    // Informations principales en haut
     const mainInfoDiv = document.createElement("div");
     mainInfoDiv.className = "briefSub__main";
     mainInfoDiv.innerHTML = `
@@ -1090,33 +1090,34 @@ function renderBrief(filtered) {
       ${bt.atNum ? `<div>🧾 ${bt.atNum}</div>` : ""}
     `;
     
-    // Analyse des risques et observations à droite
-    const sideInfoDiv = document.createElement("div");
-    sideInfoDiv.className = "briefSub__side";
-    
-    if (bt.analyseDesRisques) {
-      const analyseDiv = document.createElement("div");
-      analyseDiv.className = "briefSub__block briefSub__block--warning";
-      analyseDiv.innerHTML = `
-        <div class="briefSub__block-title">⚠️ Analyse des risques</div>
-        <div class="briefSub__block-content">${bt.analyseDesRisques}</div>
-      `;
-      sideInfoDiv.appendChild(analyseDiv);
-    }
-    
-    if (bt.observations) {
-      const obsDiv = document.createElement("div");
-      obsDiv.className = "briefSub__block briefSub__block--info";
-      obsDiv.innerHTML = `
-        <div class="briefSub__block-title">💬 Observations</div>
-        <div class="briefSub__block-content">${bt.observations}</div>
-      `;
-      sideInfoDiv.appendChild(obsDiv);
-    }
-    
     subDiv.appendChild(mainInfoDiv);
+    
+    // Analyse des risques et observations en bas côte à côte
     if (bt.analyseDesRisques || bt.observations) {
-      subDiv.appendChild(sideInfoDiv);
+      const bottomBlocksDiv = document.createElement("div");
+      bottomBlocksDiv.className = "briefSub__bottom";
+      
+      if (bt.analyseDesRisques) {
+        const analyseDiv = document.createElement("div");
+        analyseDiv.className = "briefSub__block briefSub__block--warning";
+        analyseDiv.innerHTML = `
+          <div class="briefSub__block-title">⚠️ Analyse des risques</div>
+          <div class="briefSub__block-content">${bt.analyseDesRisques}</div>
+        `;
+        bottomBlocksDiv.appendChild(analyseDiv);
+      }
+      
+      if (bt.observations) {
+        const obsDiv = document.createElement("div");
+        obsDiv.className = "briefSub__block briefSub__block--info";
+        obsDiv.innerHTML = `
+          <div class="briefSub__block-title">💬 Observations</div>
+          <div class="briefSub__block-content">${bt.observations}</div>
+        `;
+        bottomBlocksDiv.appendChild(obsDiv);
+      }
+      
+      subDiv.appendChild(bottomBlocksDiv);
     }
 
     const docsDiv = document.createElement("div");
