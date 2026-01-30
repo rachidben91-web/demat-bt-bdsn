@@ -451,16 +451,107 @@ async function extractAll() {
   setProgress(100, `Terminé : ${state.bts.length} BT détectés.`);
   console.log("[DEMAT-BT] Extraction OK ✅", state.bts.length, "BT");
   
-  // Sauvegarder dans localStorage
-  saveToCache();
+  // Sauvegarder dans localStorage + IndexedDB
+  await saveToCache();
   
   renderAll();
 }
 
 // -------------------------
+// IndexedDB pour stocker le PDF
+// -------------------------
+const DB_NAME = 'dematbt_db';
+const DB_VERSION = 1;
+const STORE_NAME = 'pdfs';
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME);
+      }
+    };
+  });
+}
+
+async function savePDFToIndexedDB(pdfArrayBuffer, filename) {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    
+    await new Promise((resolve, reject) => {
+      const request = store.put({
+        data: pdfArrayBuffer,
+        filename: filename,
+        timestamp: Date.now()
+      }, 'current_pdf');
+      
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+    
+    console.log("[IndexedDB] PDF sauvegardé ✅", filename);
+    return true;
+  } catch (err) {
+    console.error("[IndexedDB] Erreur sauvegarde PDF:", err);
+    return false;
+  }
+}
+
+async function loadPDFFromIndexedDB() {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction([STORE_NAME], 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+    
+    const result = await new Promise((resolve, reject) => {
+      const request = store.get('current_pdf');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    
+    if (result && result.data) {
+      console.log("[IndexedDB] PDF chargé ✅", result.filename);
+      return result;
+    }
+    return null;
+  } catch (err) {
+    console.error("[IndexedDB] Erreur chargement PDF:", err);
+    return null;
+  }
+}
+
+async function clearPDFFromIndexedDB() {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    
+    await new Promise((resolve, reject) => {
+      const request = store.delete('current_pdf');
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+    
+    console.log("[IndexedDB] PDF supprimé");
+    return true;
+  } catch (err) {
+    console.error("[IndexedDB] Erreur suppression PDF:", err);
+    return false;
+  }
+}
+
+// -------------------------
 // Système de cache localStorage
 // -------------------------
-function saveToCache() {
+async function saveToCache() {
   try {
     const cacheData = {
       timestamp: Date.now(),
@@ -470,14 +561,22 @@ function saveToCache() {
       countsByTechId: Array.from(state.countsByTechId.entries())
     };
     
+    // Sauvegarder les métadonnées dans localStorage
     localStorage.setItem('dematbt_cache', JSON.stringify(cacheData));
     console.log("[CACHE] Données sauvegardées ✅", state.bts.length, "BT");
+    
+    // Sauvegarder le PDF dans IndexedDB si disponible
+    if (state.pdfFile) {
+      const arrayBuffer = await state.pdfFile.arrayBuffer();
+      await savePDFToIndexedDB(arrayBuffer, state.pdfName);
+      console.log("[CACHE] PDF sauvegardé dans IndexedDB ✅");
+    }
     
     // Afficher un message de confirmation
     const msg = $("progMsg");
     if (msg) {
       const oldText = msg.textContent;
-      msg.textContent = "💾 Données sauvegardées (disponibles après rechargement)";
+      msg.textContent = "💾 Données + PDF sauvegardés (disponibles après rechargement)";
       setTimeout(() => {
         msg.textContent = oldText;
       }, 3000);
@@ -487,7 +586,7 @@ function saveToCache() {
   }
 }
 
-function loadFromCache() {
+async function loadFromCache() {
   try {
     const cached = localStorage.getItem('dematbt_cache');
     if (!cached) return false;
@@ -500,7 +599,7 @@ function loadFromCache() {
     
     if (age > maxAge) {
       console.log("[CACHE] Données expirées (>24h), suppression");
-      clearCache();
+      await clearCache();
       return false;
     }
     
@@ -509,6 +608,21 @@ function loadFromCache() {
     state.totalPages = cacheData.totalPages;
     state.bts = cacheData.bts;
     state.countsByTechId = new Map(cacheData.countsByTechId);
+    
+    // Charger le PDF depuis IndexedDB
+    await ensurePdfJs();
+    const pdfData = await loadPDFFromIndexedDB();
+    
+    if (pdfData && pdfData.data) {
+      try {
+        const loadingTask = window.pdfjsLib.getDocument({ data: pdfData.data });
+        state.pdf = await loadingTask.promise;
+        console.log("[CACHE] PDF restauré depuis IndexedDB ✅");
+      } catch (err) {
+        console.error("[CACHE] Erreur chargement PDF depuis IndexedDB:", err);
+        state.pdf = null;
+      }
+    }
     
     // Mettre à jour l'interface
     setPdfStatus(`📦 ${cacheData.pdfName} (chargé depuis cache)`);
@@ -519,21 +633,23 @@ function loadFromCache() {
     // Afficher un message d'info
     const msg = $("progMsg");
     if (msg) {
-      msg.innerHTML = `💾 Cache restauré : ${state.bts.length} BT<br/><small style="font-size:10px;opacity:0.7;">Dernière extraction: ${new Date(cacheData.timestamp).toLocaleString('fr-FR')}</small>`;
+      const pdfStatus = state.pdf ? "✅ PDF disponible" : "⚠️ PDF non disponible";
+      msg.innerHTML = `💾 Cache restauré : ${state.bts.length} BT ${pdfStatus}<br/><small style="font-size:10px;opacity:0.7;">Dernière extraction: ${new Date(cacheData.timestamp).toLocaleString('fr-FR')}</small>`;
     }
     
     renderAll();
     return true;
   } catch (err) {
     console.error("[CACHE] Erreur chargement:", err);
-    clearCache();
+    await clearCache();
     return false;
   }
 }
 
-function clearCache() {
+async function clearCache() {
   localStorage.removeItem('dematbt_cache');
-  console.log("[CACHE] Cache vidé");
+  await clearPDFFromIndexedDB();
+  console.log("[CACHE] Cache vidé (localStorage + IndexedDB)");
 }
 
 function getCacheInfo() {
@@ -1579,7 +1695,7 @@ function wireEvents() {
   // Clear cache
   const btnClearCache = $("btnClearCache");
   if (btnClearCache) {
-    btnClearCache.addEventListener("click", () => {
+    btnClearCache.addEventListener("click", async () => {
       const cacheInfo = getCacheInfo();
       if (!cacheInfo) {
         alert("Aucun cache à vider.");
@@ -1593,7 +1709,7 @@ function wireEvents() {
         `Cette action est irréversible.`;
       
       if (confirm(confirmMsg)) {
-        clearCache();
+        await clearCache();
         
         // Réinitialiser l'état
         state.bts = [];
@@ -1608,7 +1724,7 @@ function wireEvents() {
         setProgress(0, "Cache vidé.");
         renderAll();
         
-        alert("✅ Cache vidé avec succès !");
+        alert("✅ Cache vidé avec succès (données + PDF) !");
       }
     });
   }
@@ -1774,10 +1890,14 @@ async function init() {
     setInterval(updateWeather, 600000); // MAJ toutes les 10 minutes
 
     // Tenter de charger le cache
-    const cacheLoaded = loadFromCache();
+    const cacheLoaded = await loadFromCache();
     
     if (cacheLoaded) {
       console.log("[INIT] Données chargées depuis le cache ✅");
+      // Activer le bouton Extract si le PDF est chargé
+      if (state.pdf) {
+        setExtractEnabled(true);
+      }
     } else {
       console.log("[INIT] Aucun cache disponible");
     }
