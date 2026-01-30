@@ -39,17 +39,67 @@ const $ = (id) => document.getElementById(id);
 
 function setZonesStatus(msg) {
   const el = $("zonesStatus");
+  const badge = $("zonesBadge");
   if (el) el.textContent = msg;
+  
+  // Ajouter classe CSS si OK
+  if (badge) {
+    if (msg === "OK") {
+      badge.classList.add("status--ok");
+    } else {
+      badge.classList.remove("status--ok");
+    }
+  }
 }
+
 function setPdfStatus(msg) {
   const el = $("pdfStatus");
-  if (el) el.textContent = msg;
+  const badge = $("pdfBadge");
+  if (el) {
+    // Afficher nom court du fichier
+    if (msg.includes(".pdf")) {
+      const shortName = msg.length > 30 ? msg.substring(0, 27) + "..." : msg;
+      el.textContent = shortName;
+    } else {
+      el.textContent = msg;
+    }
+  }
+  
+  // Ajouter classe CSS si PDF chargé
+  if (badge) {
+    if (msg !== "Aucun PDF chargé" && msg !== "Erreur PDF" && msg.includes("pdf")) {
+      badge.classList.add("status--loaded");
+    } else {
+      badge.classList.remove("status--loaded");
+    }
+  }
 }
+
 function setProgress(pct, msg) {
   const bar = $("progBar");
   const m = $("progMsg");
+  const badge = $("progressBadge");
+  
   if (bar) bar.style.width = `${Math.max(0, Math.min(100, pct))}%`;
   if (m && msg != null) m.textContent = msg;
+  
+  // Gérer les classes CSS du badge
+  if (badge) {
+    // Extraction en cours
+    if (msg && (msg.includes("Analyse") || msg.includes("Extraction"))) {
+      badge.classList.add("status--active");
+      badge.classList.remove("status--complete");
+    }
+    // Terminé
+    else if (msg && (msg.includes("Terminé") || msg.includes("BT détectés") || msg.includes("BT chargés"))) {
+      badge.classList.add("status--complete");
+      badge.classList.remove("status--active");
+    }
+    // État normal
+    else {
+      badge.classList.remove("status--active", "status--complete");
+    }
+  }
 }
 function setExtractEnabled(enabled) {
   const btn = $("btnExtract");
@@ -401,16 +451,107 @@ async function extractAll() {
   setProgress(100, `Terminé : ${state.bts.length} BT détectés.`);
   console.log("[DEMAT-BT] Extraction OK ✅", state.bts.length, "BT");
   
-  // Sauvegarder dans localStorage
-  saveToCache();
+  // Sauvegarder dans localStorage + IndexedDB
+  await saveToCache();
   
   renderAll();
 }
 
 // -------------------------
+// IndexedDB pour stocker le PDF
+// -------------------------
+const DB_NAME = 'dematbt_db';
+const DB_VERSION = 1;
+const STORE_NAME = 'pdfs';
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME);
+      }
+    };
+  });
+}
+
+async function savePDFToIndexedDB(pdfArrayBuffer, filename) {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    
+    await new Promise((resolve, reject) => {
+      const request = store.put({
+        data: pdfArrayBuffer,
+        filename: filename,
+        timestamp: Date.now()
+      }, 'current_pdf');
+      
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+    
+    console.log("[IndexedDB] PDF sauvegardé ✅", filename);
+    return true;
+  } catch (err) {
+    console.error("[IndexedDB] Erreur sauvegarde PDF:", err);
+    return false;
+  }
+}
+
+async function loadPDFFromIndexedDB() {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction([STORE_NAME], 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+    
+    const result = await new Promise((resolve, reject) => {
+      const request = store.get('current_pdf');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    
+    if (result && result.data) {
+      console.log("[IndexedDB] PDF chargé ✅", result.filename);
+      return result;
+    }
+    return null;
+  } catch (err) {
+    console.error("[IndexedDB] Erreur chargement PDF:", err);
+    return null;
+  }
+}
+
+async function clearPDFFromIndexedDB() {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    
+    await new Promise((resolve, reject) => {
+      const request = store.delete('current_pdf');
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+    
+    console.log("[IndexedDB] PDF supprimé");
+    return true;
+  } catch (err) {
+    console.error("[IndexedDB] Erreur suppression PDF:", err);
+    return false;
+  }
+}
+
+// -------------------------
 // Système de cache localStorage
 // -------------------------
-function saveToCache() {
+async function saveToCache() {
   try {
     const cacheData = {
       timestamp: Date.now(),
@@ -420,14 +561,22 @@ function saveToCache() {
       countsByTechId: Array.from(state.countsByTechId.entries())
     };
     
+    // Sauvegarder les métadonnées dans localStorage
     localStorage.setItem('dematbt_cache', JSON.stringify(cacheData));
     console.log("[CACHE] Données sauvegardées ✅", state.bts.length, "BT");
+    
+    // Sauvegarder le PDF dans IndexedDB si disponible
+    if (state.pdfFile) {
+      const arrayBuffer = await state.pdfFile.arrayBuffer();
+      await savePDFToIndexedDB(arrayBuffer, state.pdfName);
+      console.log("[CACHE] PDF sauvegardé dans IndexedDB ✅");
+    }
     
     // Afficher un message de confirmation
     const msg = $("progMsg");
     if (msg) {
       const oldText = msg.textContent;
-      msg.textContent = "💾 Données sauvegardées (disponibles après rechargement)";
+      msg.textContent = "💾 Données + PDF sauvegardés (disponibles après rechargement)";
       setTimeout(() => {
         msg.textContent = oldText;
       }, 3000);
@@ -437,7 +586,7 @@ function saveToCache() {
   }
 }
 
-function loadFromCache() {
+async function loadFromCache() {
   try {
     const cached = localStorage.getItem('dematbt_cache');
     if (!cached) return false;
@@ -450,7 +599,7 @@ function loadFromCache() {
     
     if (age > maxAge) {
       console.log("[CACHE] Données expirées (>24h), suppression");
-      clearCache();
+      await clearCache();
       return false;
     }
     
@@ -459,6 +608,21 @@ function loadFromCache() {
     state.totalPages = cacheData.totalPages;
     state.bts = cacheData.bts;
     state.countsByTechId = new Map(cacheData.countsByTechId);
+    
+    // Charger le PDF depuis IndexedDB
+    await ensurePdfJs();
+    const pdfData = await loadPDFFromIndexedDB();
+    
+    if (pdfData && pdfData.data) {
+      try {
+        const loadingTask = window.pdfjsLib.getDocument({ data: pdfData.data });
+        state.pdf = await loadingTask.promise;
+        console.log("[CACHE] PDF restauré depuis IndexedDB ✅");
+      } catch (err) {
+        console.error("[CACHE] Erreur chargement PDF depuis IndexedDB:", err);
+        state.pdf = null;
+      }
+    }
     
     // Mettre à jour l'interface
     setPdfStatus(`📦 ${cacheData.pdfName} (chargé depuis cache)`);
@@ -469,21 +633,23 @@ function loadFromCache() {
     // Afficher un message d'info
     const msg = $("progMsg");
     if (msg) {
-      msg.innerHTML = `💾 Cache restauré : ${state.bts.length} BT<br/><small style="font-size:10px;opacity:0.7;">Dernière extraction: ${new Date(cacheData.timestamp).toLocaleString('fr-FR')}</small>`;
+      const pdfStatus = state.pdf ? "✅ PDF disponible" : "⚠️ PDF non disponible";
+      msg.innerHTML = `💾 Cache restauré : ${state.bts.length} BT ${pdfStatus}<br/><small style="font-size:10px;opacity:0.7;">Dernière extraction: ${new Date(cacheData.timestamp).toLocaleString('fr-FR')}</small>`;
     }
     
     renderAll();
     return true;
   } catch (err) {
     console.error("[CACHE] Erreur chargement:", err);
-    clearCache();
+    await clearCache();
     return false;
   }
 }
 
-function clearCache() {
+async function clearCache() {
   localStorage.removeItem('dematbt_cache');
-  console.log("[CACHE] Cache vidé");
+  await clearPDFFromIndexedDB();
+  console.log("[CACHE] Cache vidé (localStorage + IndexedDB)");
 }
 
 function getCacheInfo() {
@@ -562,7 +728,24 @@ function buildTechSelectWithCounts() {
     const cnt = state.countsByTechId.get(techKey(t)) || 0;
     const opt = document.createElement("option");
     opt.value = techKey(t);
-    opt.textContent = `${t.name} (${cnt} BT)`;
+    
+    // Debug: vérifier les propriétés
+    if (cnt === withBt[0] && cnt > 0) {
+      console.log("[DEBUG] Premier technicien:", t.name, "PTC:", t.ptc, "PTD:", t.ptd);
+    }
+    
+    // Construire le texte avec badges PTC/PTD
+    let displayText = `${t.name} (${cnt} BT)`;
+    
+    if (t.ptc && t.ptd) {
+      displayText += " [PTC+PTD]";
+    } else if (t.ptc) {
+      displayText += " [PTC]";
+    } else if (t.ptd) {
+      displayText += " [PTD]";
+    }
+    
+    opt.textContent = displayText;
     sel.appendChild(opt);
   }
 
@@ -650,11 +833,6 @@ function renderGrid(filtered, grid) {
   }
 
   for (const bt of filtered) {
-    const teamTxt = (bt.team || []).map(m => {
-      const tech = mapTechByNni(m.nni);
-      return tech ? tech.name : m.nni;
-    }).join(" • ") || "—";
-
     // Compter les docs par type
     const counts = {};
     for (const d of bt.docs || []) counts[d.type] = (counts[d.type] || 0) + 1;
@@ -716,15 +894,95 @@ function renderGrid(filtered, grid) {
     const metaDiv = document.createElement("div");
     metaDiv.className = "btMeta";
     const dureeFormatted = formatDuree(bt.duree);
+    
+    // Créer la ligne d'équipe avec badges PTC/PTD
+    const teamLine = document.createElement("div");
+    teamLine.style.display = "flex";
+    teamLine.style.alignItems = "center";
+    teamLine.style.gap = "6px";
+    teamLine.style.flexWrap = "wrap";
+    
+    const teamIcon = document.createElement("span");
+    teamIcon.textContent = "👥 ";
+    teamLine.appendChild(teamIcon);
+    
+    if (bt.team && bt.team.length > 0) {
+      bt.team.forEach((m, idx) => {
+        const tech = mapTechByNni(m.nni);
+        
+        // Nom du technicien
+        const nameSpan = document.createElement("span");
+        if (tech) {
+          nameSpan.textContent = tech.name;
+        } else {
+          // Technicien non trouvé - afficher le NNI en italique avec icône
+          nameSpan.style.fontStyle = "italic";
+          nameSpan.style.opacity = "0.7";
+          nameSpan.textContent = `${m.nni}`;
+          nameSpan.title = "Technicien non répertorié dans la base";
+        }
+        teamLine.appendChild(nameSpan);
+        
+        // Badge PTC/PTD si applicable
+        if (tech && (tech.ptc || tech.ptd)) {
+          const badge = document.createElement("span");
+          badge.style.cssText = `
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 999px;
+            font-size: 9px;
+            font-weight: 700;
+            margin-left: 3px;
+          `;
+          
+          if (tech.ptc && tech.ptd) {
+            badge.style.background = "#10b98115";
+            badge.style.color = "#10b981";
+            badge.style.border = "1px solid #10b981";
+            badge.textContent = "PTC+PTD";
+          } else if (tech.ptc) {
+            badge.style.background = "#3b82f615";
+            badge.style.color = "#3b82f6";
+            badge.style.border = "1px solid #3b82f6";
+            badge.textContent = "PTC";
+          } else if (tech.ptd) {
+            badge.style.background = "#f59e0b15";
+            badge.style.color = "#f59e0b";
+            badge.style.border = "1px solid #f59e0b";
+            badge.textContent = "PTD";
+          }
+          
+          teamLine.appendChild(badge);
+        }
+        
+        // Ajouter séparateur si pas le dernier
+        if (idx < bt.team.length - 1) {
+          const sep = document.createElement("span");
+          sep.textContent = " • ";
+          sep.style.color = "var(--muted)";
+          teamLine.appendChild(sep);
+        }
+      });
+    } else {
+      const emptySpan = document.createElement("span");
+      emptySpan.textContent = "—";
+      teamLine.appendChild(emptySpan);
+    }
+    
+    // Construire le reste des métadonnées
     metaDiv.innerHTML = `
       <div>📅 ${bt.datePrevue || "—"}</div>
       ${dureeFormatted ? `<div>⏱️ ${dureeFormatted}</div>` : ""}
       <div>📋 ${bt.objet || "—"}</div>
       <div>👤 ${bt.client || "—"}</div>
       <div>📍 ${bt.localisation || "—"}</div>
-      <div>👥 ${teamTxt}</div>
       ${bt.atNum ? `<div>🧾 ${bt.atNum}</div>` : ""}
     `;
+    
+    // Insérer la ligne d'équipe dans metaDiv
+    const teamContainer = document.createElement("div");
+    teamContainer.appendChild(teamLine);
+    metaDiv.appendChild(teamContainer);
     
     // Actions (boutons pour voir les docs)
     const actionsDiv = document.createElement("div");
@@ -1050,6 +1308,7 @@ function renderBrief(filtered) {
     titleDiv.style.alignItems = "center";
     titleDiv.style.gap = "12px";
     titleDiv.style.marginBottom = "10px";
+    titleDiv.style.flexWrap = "wrap";
     
     const idSpan = document.createElement("div");
     idSpan.className = "briefTitle";
@@ -1073,6 +1332,50 @@ function renderBrief(filtered) {
     
     titleDiv.appendChild(idSpan);
     titleDiv.appendChild(categoryBadge);
+    
+    // Ajouter les badges PTC/PTD si le technicien a une convention
+    if (bt.team && bt.team.length > 0) {
+      bt.team.forEach(member => {
+        const tech = mapTechByNni(member.nni);
+        if (tech && (tech.ptc || tech.ptd)) {
+          const conventionBadge = document.createElement("div");
+          let badgeText = "";
+          let badgeColor = "";
+          
+          if (tech.ptc && tech.ptd) {
+            badgeText = "PTC + PTD";
+            badgeColor = "#10b981"; // Vert
+          } else if (tech.ptc) {
+            badgeText = "PTC";
+            badgeColor = "#3b82f6"; // Bleu
+          } else if (tech.ptd) {
+            badgeText = "PTD";
+            badgeColor = "#f59e0b"; // Orange
+          }
+          
+          conventionBadge.style.cssText = `
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            background: ${badgeColor}15;
+            color: ${badgeColor};
+            border: 1.5px solid ${badgeColor};
+          `;
+          conventionBadge.textContent = badgeText;
+          conventionBadge.title = tech.ptc && tech.ptd 
+            ? "Prise de Travail à Distance + Prise de Travail sur Chantier" 
+            : tech.ptc 
+              ? "Prise de Travail à Distance"
+              : "Prise de Travail sur Chantier";
+          
+          titleDiv.appendChild(conventionBadge);
+        }
+      });
+    }
 
     const subDiv = document.createElement("div");
     subDiv.className = "briefSub";
@@ -1458,7 +1761,7 @@ function wireEvents() {
   // Clear cache
   const btnClearCache = $("btnClearCache");
   if (btnClearCache) {
-    btnClearCache.addEventListener("click", () => {
+    btnClearCache.addEventListener("click", async () => {
       const cacheInfo = getCacheInfo();
       if (!cacheInfo) {
         alert("Aucun cache à vider.");
@@ -1472,7 +1775,7 @@ function wireEvents() {
         `Cette action est irréversible.`;
       
       if (confirm(confirmMsg)) {
-        clearCache();
+        await clearCache();
         
         // Réinitialiser l'état
         state.bts = [];
@@ -1487,7 +1790,7 @@ function wireEvents() {
         setProgress(0, "Cache vidé.");
         renderAll();
         
-        alert("✅ Cache vidé avec succès !");
+        alert("✅ Cache vidé avec succès (données + PDF) !");
       }
     });
   }
@@ -1653,10 +1956,14 @@ async function init() {
     setInterval(updateWeather, 600000); // MAJ toutes les 10 minutes
 
     // Tenter de charger le cache
-    const cacheLoaded = loadFromCache();
+    const cacheLoaded = await loadFromCache();
     
     if (cacheLoaded) {
       console.log("[INIT] Données chargées depuis le cache ✅");
+      // Activer le bouton Extract si le PDF est chargé
+      if (state.pdf) {
+        setExtractEnabled(true);
+      }
     } else {
       console.log("[INIT] Aucun cache disponible");
     }
