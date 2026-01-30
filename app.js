@@ -1322,6 +1322,134 @@ function wireEvents() {
 }
 
 // -------------------------
+// Date/Heure et Météo
+// -------------------------
+function updateDateTime() {
+  const now = new Date();
+  const options = { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  };
+  const dateStr = now.toLocaleDateString('fr-FR', options);
+  const el = $("topDatetime");
+  if (el) {
+    el.textContent = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
+  }
+}
+
+async function updateWeather() {
+  const communes = [
+    { name: "Ermont", lat: 48.9897, lon: 2.2578 },
+    { name: "La Garenne-Colombes", lat: 48.9064, lon: 2.2428 },
+    { name: "Villeneuve-la-Garenne", lat: 48.9369, lon: 2.3253 },
+    { name: "Groslay", lat: 49.0128, lon: 2.3464 }
+  ];
+  
+  const el = $("topWeather");
+  if (!el) return;
+  
+  try {
+    el.innerHTML = '<span style="opacity:0.6;">Chargement météo...</span>';
+    
+    // API OpenWeatherMap gratuite (pas de clé nécessaire pour wttr.in)
+    const weatherPromises = communes.map(async (commune) => {
+      try {
+        // Utilisation de l'API wttr.in qui ne nécessite pas de clé
+        const response = await fetch(`https://wttr.in/${commune.name.replace(/\s+/g, '_')}?format=j1&lang=fr`);
+        const data = await response.json();
+        
+        const current = data.current_condition[0];
+        const temp = current.temp_C;
+        const desc = current.lang_fr[0].value;
+        const icon = getWeatherIcon(current.weatherCode);
+        
+        return { name: commune.name, temp, desc, icon };
+      } catch (err) {
+        console.error(`Erreur météo pour ${commune.name}:`, err);
+        return { name: commune.name, temp: "—", desc: "—", icon: "🌡️" };
+      }
+    });
+    
+    const results = await Promise.all(weatherPromises);
+    
+    // Affichage compact avec température moyenne et icône dominante
+    const avgTemp = Math.round(
+      results.reduce((sum, r) => sum + (parseFloat(r.temp) || 0), 0) / results.length
+    );
+    
+    const weatherHTML = results
+      .map(r => `<span style="white-space:nowrap;">${r.icon} ${r.name.split('-')[0]}: ${r.temp}°C</span>`)
+      .join('<span style="margin:0 8px; opacity:0.3;">|</span>');
+    
+    el.innerHTML = weatherHTML;
+    
+  } catch (err) {
+    console.error("Erreur météo globale:", err);
+    el.innerHTML = '<span style="opacity:0.6;">Météo indisponible</span>';
+  }
+}
+
+function getWeatherIcon(code) {
+  // Codes météo wttr.in
+  const weatherIcons = {
+    113: "☀️", // Clear/Sunny
+    116: "⛅", // Partly cloudy
+    119: "☁️", // Cloudy
+    122: "☁️", // Overcast
+    143: "🌫️", // Mist
+    176: "🌦️", // Patchy rain possible
+    179: "🌨️", // Patchy snow possible
+    182: "🌧️", // Patchy sleet possible
+    185: "🌧️", // Patchy freezing drizzle possible
+    200: "⛈️", // Thundery outbreaks possible
+    227: "🌨️", // Blowing snow
+    230: "❄️", // Blizzard
+    248: "🌫️", // Fog
+    260: "🌫️", // Freezing fog
+    263: "🌦️", // Patchy light drizzle
+    266: "🌧️", // Light drizzle
+    281: "🌧️", // Freezing drizzle
+    284: "🌧️", // Heavy freezing drizzle
+    293: "🌦️", // Patchy light rain
+    296: "🌧️", // Light rain
+    299: "🌧️", // Moderate rain at times
+    302: "🌧️", // Moderate rain
+    305: "🌧️", // Heavy rain at times
+    308: "🌧️", // Heavy rain
+    311: "🌧️", // Light freezing rain
+    314: "🌧️", // Moderate or heavy freezing rain
+    317: "🌨️", // Light sleet
+    320: "🌨️", // Moderate or heavy sleet
+    323: "🌨️", // Patchy light snow
+    326: "🌨️", // Light snow
+    329: "🌨️", // Patchy moderate snow
+    332: "❄️", // Moderate snow
+    335: "❄️", // Patchy heavy snow
+    338: "❄️", // Heavy snow
+    350: "🌧️", // Ice pellets
+    353: "🌦️", // Light rain shower
+    356: "🌧️", // Moderate or heavy rain shower
+    359: "🌧️", // Torrential rain shower
+    362: "🌨️", // Light sleet showers
+    365: "🌨️", // Moderate or heavy sleet showers
+    368: "🌨️", // Light snow showers
+    371: "❄️", // Moderate or heavy snow showers
+    374: "🌧️", // Light showers of ice pellets
+    377: "🌧️", // Moderate or heavy showers of ice pellets
+    386: "⛈️", // Patchy light rain with thunder
+    389: "⛈️", // Moderate or heavy rain with thunder
+    392: "⛈️", // Patchy light snow with thunder
+    395: "⛈️"  // Moderate or heavy snow with thunder
+  };
+  return weatherIcons[code] || "🌡️";
+}
+
+// -------------------------
 // Init
 // -------------------------
 async function init() {
@@ -1334,6 +1462,14 @@ async function init() {
     wireEvents();
 
     await loadZones();
+
+    // Mise à jour date/heure
+    updateDateTime();
+    setInterval(updateDateTime, 1000); // MAJ chaque seconde
+    
+    // Mise à jour météo
+    updateWeather();
+    setInterval(updateWeather, 600000); // MAJ toutes les 10 minutes
 
     // vue par défaut
     setView("referent");
