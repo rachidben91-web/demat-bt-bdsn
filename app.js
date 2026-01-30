@@ -1,3 +1,5 @@
+const APP_VERSION = "V9.2.1";
+
 /* app.js — DEMAT-BT v2.0 (Version avec modal + viewer)
    Compatible avec TON index.html :
    - Référent:  #viewReferent + #btGrid + #kpis
