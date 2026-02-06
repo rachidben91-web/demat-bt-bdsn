@@ -3,7 +3,7 @@
    - Baseline: V9.2
 */
 
-const APP_VERSION = "V9.3.2";
+const APP_VERSION = "V9.3.4";
 const DOC_TYPES = ["BT", "AT", "PROC", "PLAN", "PHOTO", "STREET", "DOC"];
 let ZONES = null;
 
@@ -80,10 +80,10 @@ function ruleMatches(text, rule) {
 }
 
 function detectBadgesForBT(bt) {
+  // Mode "une seule pastille" : on renvoie uniquement la meilleure (plus haute priorité)
   if (!BADGE_RULES?.badges?.length) return [];
 
   const text = buildBTBadgeText(bt);
-  const badges = [];
 
   // Tri par priorité (desc)
   const ordered = [...BADGE_RULES.badges].sort((a, b) => (b.priority || 0) - (a.priority || 0));
@@ -94,21 +94,10 @@ function detectBadgesForBT(bt) {
 
     const rules = badge.rules || [];
     const matched = rules.some(r => ruleMatches(text, r));
-    if (matched) badges.push(badge.id);
+    if (matched) return [badge.id]; // first match wins
   }
 
-  // Appliquer l'ordre d'empilement si défini + maxBadgesPerBT
-  const stackOrder = BADGE_RULES?.notes?.ui?.display?.stackOrder || [];
-  const max = BADGE_RULES?.notes?.ui?.display?.maxBadgesPerBT || 2;
-
-  const byOrder = (id) => {
-    const idx = stackOrder.indexOf(id);
-    return idx === -1 ? 9999 : idx;
-  };
-
-  const unique = [...new Set(badges)];
-  unique.sort((a, b) => byOrder(a) - byOrder(b));
-  return unique.slice(0, max);
+  return [];
 }
 
 function getBadgeCfg(id) {
@@ -990,30 +979,6 @@ function renderGrid(filtered, grid) {
     
     leftSection.appendChild(idDiv);
     leftSection.appendChild(categoryBadge);
-
-
-    // Ligne des pastilles métier (max 2)
-    if (metierIds.length) {
-      const metierWrap = document.createElement("div");
-      metierWrap.style.display = "flex";
-      metierWrap.style.flexWrap = "wrap";
-      metierWrap.style.gap = "6px";
-      metierWrap.style.marginTop = "2px";
-
-      for (const bid of metierIds) {
-        const cfg = getBadgeCfg(bid);
-        if (!cfg) continue;
-        const pill = document.createElement("span");
-        pill.className = "badge badge--strong";
-        pill.style.background = cfg.color || "#444";
-        pill.style.color = "#fff";
-        pill.style.border = "none";
-        pill.style.fontWeight = "900";
-        pill.textContent = `${cfg.icon} ${cfg.label}`;
-        metierWrap.appendChild(pill);
-      }
-      leftSection.appendChild(metierWrap);
-    }
     
     const badgesDiv = document.createElement("div");
     badgesDiv.className = "badges";
