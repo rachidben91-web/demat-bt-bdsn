@@ -3,9 +3,95 @@
    - Baseline: V9.2
 */
 
-const APP_VERSION = "V9.3.1";
+const APP_VERSION = "V9.3.2";
 const DOC_TYPES = ["BT", "AT", "PROC", "PLAN", "PHOTO", "STREET", "DOC"];
 let ZONES = null;
+
+// -------------------------
+// Badges métier (pastilles) — config JSON
+// -------------------------
+let BADGE_RULES = null;
+
+async function loadBadgeRules() {
+  try {
+    const res = await fetch("./config/badges-rules.json", { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    BADGE_RULES = await res.json();
+    console.log("[BADGES] Règles chargées ✅", BADGE_RULES?.version || "");
+  } catch (e) {
+    console.warn("[BADGES] Impossible de charger ./config/badges-rules.json — pastilles métier désactivées.", e);
+    BADGE_RULES = null;
+  }
+}
+
+function normalizeBadgeText(str = "") {
+  return String(str)
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildBTBadgeText(bt) {
+  // On concatène plusieurs champs possibles (selon extraction)
+  return normalizeBadgeText([
+    bt.objet,
+    bt.precisionObjet,
+    bt.designation,
+    bt.analyseDesRisques,
+    bt.observations,
+    bt.localisation,
+    bt.client,
+    (bt.docs || []).map(d => `${d.type || ""}`).join(" ")
+  ].filter(Boolean).join(" | "));
+}
+
+function ruleMatches(text, rule) {
+  if (!rule) return false;
+  const anyOk = !rule.any || rule.any.some(k => text.includes(k));
+  const allOk = !rule.all || rule.all.every(k => text.includes(k));
+  // Compat: certains JSON peuvent utiliser any2 — on le traite comme any supplémentaire
+  const any2Ok = !rule.any2 || rule.any2.some(k => text.includes(k));
+  return anyOk && any2Ok && allOk;
+}
+
+function detectBadgesForBT(bt) {
+  if (!BADGE_RULES?.badges?.length) return [];
+
+  const text = buildBTBadgeText(bt);
+  const badges = [];
+
+  // Tri par priorité (desc)
+  const ordered = [...BADGE_RULES.badges].sort((a, b) => (b.priority || 0) - (a.priority || 0));
+
+  for (const badge of ordered) {
+    const excludes = badge.exclude || [];
+    if (excludes.some(ex => text.includes(ex))) continue;
+
+    const rules = badge.rules || [];
+    const matched = rules.some(r => ruleMatches(text, r));
+    if (matched) badges.push(badge.id);
+  }
+
+  // Appliquer l'ordre d'empilement si défini + maxBadgesPerBT
+  const stackOrder = BADGE_RULES?.notes?.ui?.display?.stackOrder || [];
+  const max = BADGE_RULES?.notes?.ui?.display?.maxBadgesPerBT || 2;
+
+  const byOrder = (id) => {
+    const idx = stackOrder.indexOf(id);
+    return idx === -1 ? 9999 : idx;
+  };
+
+  const unique = [...new Set(badges)];
+  unique.sort((a, b) => byOrder(a) - byOrder(b));
+  return unique.slice(0, max);
+}
+
+function getBadgeCfg(id) {
+  if (!BADGE_RULES?.badges) return null;
+  return BADGE_RULES.badges.find(b => b.id === id) || null;
+}
 
 const state = {
   pdf: null,
@@ -421,8 +507,11 @@ async function extractAll() {
         duree: dureeTxt, // Stocker la durée
         analyseDesRisques: analyseTxt, // Stocker l'analyse des risques
         observations: obsTxt, // Stocker les observations
-        docs: [{ page: p, type: "BT" }]
+        docs: [{ page: p, type: "BT" }],
+        badges: []
       };
+
+      currentBT.badges = detectBadgesForBT(currentBT);
 
       state.bts.push(currentBT);
 
@@ -442,6 +531,8 @@ async function extractAll() {
       const header = norm(await extractTextInBBox(page, bbOBJ));
       const type = detectDocTypeFromHeader(header);
       currentBT.docs.push({ page: p, type });
+      // Recalculer les pastilles métier si des docs supplémentaires influencent la détection
+      currentBT.badges = detectBadgesForBT(currentBT);
     }
   }
 
@@ -837,6 +928,10 @@ function renderGrid(filtered, grid) {
     // Classification de l'intervention
     const classification = classifyIntervention(bt);
 
+    // Pastilles métier (issues du badges-rules.json)
+    const metierIds = Array.isArray(bt.badges) ? bt.badges : [];
+    const primaryMetier = metierIds.length ? getBadgeCfg(metierIds[0]) : null;
+
     const card = document.createElement("div");
     card.className = "card btCard";
     
@@ -864,14 +959,38 @@ function renderGrid(filtered, grid) {
       font-weight: 800;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      background: ${classification.color};
+      background: ${(primaryMetier && primaryMetier.color) ? primaryMetier.color : classification.color};
       color: #fff;
-      box-shadow: 0 2px 8px ${classification.color}40;
+      box-shadow: 0 2px 8px ${((primaryMetier && primaryMetier.color) ? primaryMetier.color : classification.color)}40;
     `;
-    categoryBadge.textContent = classification.label;
+    categoryBadge.textContent = primaryMetier ? `${primaryMetier.icon} ${primaryMetier.label}` : classification.label;
     
     leftSection.appendChild(idDiv);
     leftSection.appendChild(categoryBadge);
+
+
+    // Ligne des pastilles métier (max 2)
+    if (metierIds.length) {
+      const metierWrap = document.createElement("div");
+      metierWrap.style.display = "flex";
+      metierWrap.style.flexWrap = "wrap";
+      metierWrap.style.gap = "6px";
+      metierWrap.style.marginTop = "2px";
+
+      for (const bid of metierIds) {
+        const cfg = getBadgeCfg(bid);
+        if (!cfg) continue;
+        const pill = document.createElement("span");
+        pill.className = "badge badge--strong";
+        pill.style.background = cfg.color || "#444";
+        pill.style.color = "#fff";
+        pill.style.border = "none";
+        pill.style.fontWeight = "900";
+        pill.textContent = `${cfg.icon} ${cfg.label}`;
+        metierWrap.appendChild(pill);
+      }
+      leftSection.appendChild(metierWrap);
+    }
     
     const badgesDiv = document.createElement("div");
     badgesDiv.className = "badges";
@@ -1321,11 +1440,11 @@ function renderBrief(filtered) {
       font-weight: 800;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      background: ${classification.color};
+      background: ${(primaryMetier && primaryMetier.color) ? primaryMetier.color : classification.color};
       color: #fff;
-      box-shadow: 0 2px 8px ${classification.color}40;
+      box-shadow: 0 2px 8px ${((primaryMetier && primaryMetier.color) ? primaryMetier.color : classification.color)}40;
     `;
-    categoryBadge.textContent = classification.label;
+    categoryBadge.textContent = primaryMetier ? `${primaryMetier.icon} ${primaryMetier.label}` : classification.label;
     
     titleDiv.appendChild(idSpan);
     titleDiv.appendChild(categoryBadge);
@@ -2052,6 +2171,9 @@ async function init() {
     wireEvents();
 
     await loadZones();
+
+    // Charger les règles de pastilles métier
+    await loadBadgeRules();
 
     // Mise à jour date/heure
     updateDateTime();
