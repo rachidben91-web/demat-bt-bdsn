@@ -25,12 +25,19 @@ async function loadBadgeRules() {
 }
 
 function normalizeBadgeText(str = "") {
-  return String(str)
+  // Normalisation robuste pour matching par mots (réduit fortement les faux positifs)
+  // - majuscules + suppression accents
+  // - ponctuation -> espaces
+  // - espaces multiples -> 1 espace
+  // - padding espaces début/fin pour matcher des mots entiers via includes(" MOT ")
+  const s = String(str)
     .toUpperCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+  return ` ${s} `;
 }
 
 function buildBTBadgeText(bt) {
@@ -47,12 +54,28 @@ function buildBTBadgeText(bt) {
   ].filter(Boolean).join(" | "));
 }
 
+function normalizeBadgeKey(k = "") {
+  // même normalisation que le texte BT, pour aligner les comparaisons
+  const s = String(k)
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return ` ${s} `;
+}
+
 function ruleMatches(text, rule) {
   if (!rule) return false;
-  const anyOk = !rule.any || rule.any.some(k => text.includes(k));
-  const allOk = !rule.all || rule.all.every(k => text.includes(k));
-  // Compat: certains JSON peuvent utiliser any2 — on le traite comme any supplémentaire
-  const any2Ok = !rule.any2 || rule.any2.some(k => text.includes(k));
+
+  const has = (k) => text.includes(normalizeBadgeKey(k));
+
+  const anyOk = !rule.any || rule.any.some(has);
+  const allOk = !rule.all || rule.all.every(has);
+  // Compat: any2 = groupe "au moins un" supplémentaire
+  const any2Ok = !rule.any2 || rule.any2.some(has);
+
   return anyOk && any2Ok && allOk;
 }
 
@@ -67,7 +90,7 @@ function detectBadgesForBT(bt) {
 
   for (const badge of ordered) {
     const excludes = badge.exclude || [];
-    if (excludes.some(ex => text.includes(ex))) continue;
+    if (excludes.some(ex => text.includes(normalizeBadgeKey(ex)))) continue;
 
     const rules = badge.rules || [];
     const matched = rules.some(r => ruleMatches(text, r));
@@ -703,7 +726,7 @@ async function loadFromCache() {
     
     if (pdfData && pdfData.data) {
       try {
-        const loadingTask = window.pdfjsLib.getDocument({ data: pdfData.data });
+        const loadingTask = window.pdfjsLib.getDocument({ data: pdfData.data, stopAtErrors: false, disableAutoFetch: true });
         state.pdf = await loadingTask.promise;
         console.log("[CACHE] PDF restauré depuis IndexedDB ✅");
       } catch (err) {
@@ -1912,7 +1935,7 @@ function wireEvents() {
         state.pdfName = f.name;
 
         const buf = await f.arrayBuffer();
-        const loadingTask = window.pdfjsLib.getDocument({ data: buf });
+        const loadingTask = window.pdfjsLib.getDocument({ data: buf, stopAtErrors: false, disableAutoFetch: true });
         state.pdf = await loadingTask.promise;
         state.totalPages = state.pdf.numPages;
 
