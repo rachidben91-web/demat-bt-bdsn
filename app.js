@@ -55,16 +55,10 @@ function normalizeBadgeText(str = "") {
 }
 
 function buildBTBadgeText(bt) {
-  // On concatène plusieurs champs possibles (selon extraction)
+  // Détection sur objet + precisionObjet UNIQUEMENT (les autres champs polluent la détection)
   return normalizeBadgeText([
     bt.objet,
-    bt.precisionObjet,
-    bt.designation,
-    bt.analyseDesRisques,
-    bt.observations,
-    bt.localisation,
-    bt.client,
-    (bt.docs || []).map(d => `${d.type || ""}`).join(" ")
+    bt.precisionObjet
   ].filter(Boolean).join(" | "));
 }
 
