@@ -65,7 +65,7 @@
       "id": "IS_J1",
       "label": "IS J1",
       "icon": "🛑",
-      "color": "#C62828",
+      "color": "#f6ff00",
       "priority": 950,
       "rules": [
         { "any": ["IS J1", "IS JOUR 1", "INTERVENTION SECURITE JOUR 1"] }
@@ -76,7 +76,7 @@
       "id": "IS_J2",
       "label": "IS J2",
       "icon": "🛑",
-      "color": "#C62828",
+      "color": "#f6ff00",
       "priority": 949,
       "rules": [
         { "any": ["IS J2", "IS JOUR 2", "INTERVENTION SECURITE JOUR 2"] }
@@ -87,7 +87,7 @@
       "id": "IS_J3",
       "label": "IS J3",
       "icon": "🛑",
-      "color": "#C62828",
+      "color": "#f6ff00",
       "priority": 948,
       "rules": [
         { "any": ["IS J3", "IS JOUR 3", "INTERVENTION SECURITE JOUR 3"] }
@@ -98,7 +98,7 @@
       "id": "DEP_J1",
       "label": "DEP J1",
       "icon": "🧰",
-      "color": "#FB8C00",
+      "color": "#f6ff00",
       "priority": 920,
       "rules": [
         { "any": ["DEP J1", "DEP JOUR 1", "DEPANNAGE JOUR 1"] }
@@ -109,7 +109,7 @@
       "id": "DEP_J2",
       "label": "DEP J2",
       "icon": "🧰",
-      "color": "#FB8C00",
+      "color": "#f6ff00",
       "priority": 919,
       "rules": [
         { "any": ["DEP J2", "DEP JOUR 2", "DEPANNAGE JOUR 2"] }
@@ -120,7 +120,7 @@
       "id": "DEP_J3",
       "label": "DEP J3",
       "icon": "🧰",
-      "color": "#FB8C00",
+      "color": "#f6ff00",
       "priority": 918,
       "rules": [
         { "any": ["DEP J3", "DEP JOUR 3", "DEPANNAGE JOUR 3"] }
