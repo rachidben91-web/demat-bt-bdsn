@@ -1,4 +1,4 @@
-/* app.js — DEMAT-BT V10.0
+/* app.js — DEMAT-BT V10.0.1
    - Amélioration majeure: Détection avancée des pièces jointes (AT, PROC, PLAN, PHOTO, STREET)
    - Ajout: Analyse du contenu des pages (détection d'images pour PHOTO)
    - Ajout: Filtres visuels avec icônes et compteurs pour types de documents
@@ -8,7 +8,7 @@
    - Baseline: V9.3
 */
 
-const APP_VERSION = "V10.0";
+const APP_VERSION = "V10.0.1";
 const DOC_TYPES_CONFIG = {
   "BT": { label: "BT", icon: "📋", color: "#1e293b", desc: "Bon de Travail" },
   "AT": { label: "AT", icon: "✅", color: "#059669", desc: "Autorisation de Travail" },
@@ -1579,6 +1579,10 @@ function renderBrief(filtered) {
   for (const bt of filtered) {
     const classification = classifyIntervention(bt);
     
+    // Pastille métier (badges-rules.json) — évite ReferenceError en vue Brief
+    const metierIds = Array.isArray(bt.badges) ? bt.badges : [];
+    const primaryMetier = metierIds.length ? getBadgeCfg(metierIds[0]) : null;
+
     const card = document.createElement("div");
     card.className = "card briefCard";
 
