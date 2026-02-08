@@ -1,6 +1,6 @@
 {
-  "version": "ruleset-3.0",
-  "description": "DEMAT-BT — Règles pastilles métier (v3.0: ajout MHS, MES, VISUELLE, MAINT_CORRECTIVE, SURV_FUITE + fix LOCA faux positifs RSF)",
+  "version": "ruleset-3.1",
+  "description": "DEMAT-BT — Règles pastilles métier (v3.1: fix détection objet-only + EAP entretien + MAGASIN recyclage)",
   "detection": {
     "normalize": {
       "uppercase": true,
@@ -224,7 +224,7 @@
       "color": "#00ACC1",
       "priority": 760,
       "rules": [
-        { "any": ["EAP", "ENTRETIEN ANNUEL", "ENTRETIEN ANNUEL PROFESSIONNEL", "ENTRETIEN PROFESSIONNEL", "PREPARATION EAP", "DEMARCHE ETHIQUE"] }
+        { "any": ["EAP", "ENTRETIEN ANNUEL", "ENTRETIEN ANNUEL PROFESSIONNEL", "ENTRETIEN PROFESSIONNEL", "PREPARATION EAP", "DEMARCHE ETHIQUE", "ENTRETIEN AVEC"] }
       ],
       "exclude": []
     },
@@ -316,7 +316,7 @@
       "color": "#8D6E63",
       "priority": 520,
       "rules": [
-        { "any": ["MAGASIN", "APPROVISIONNEMENT", "LOGISTIQUE", "STOCK"] }
+        { "any": ["MAGASIN", "APPROVISIONNEMENT", "LOGISTIQUE", "STOCK", "RECYCLAGE"] }
       ],
       "exclude": []
     },
