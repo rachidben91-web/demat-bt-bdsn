@@ -1,6 +1,6 @@
 {
-  "version": "ruleset-2.0",
-  "description": "DEMAT-BT — Règles pastilles métier (v2.0: amélioration détection MAINT CICM, REUNION, EAP)",
+  "version": "ruleset-3.0",
+  "description": "DEMAT-BT — Règles pastilles métier (v3.0: ajout MHS, MES, VISUELLE, MAINT_CORRECTIVE, SURV_FUITE + fix LOCA faux positifs RSF)",
   "detection": {
     "normalize": {
       "uppercase": true,
@@ -21,72 +21,45 @@
       "color": "#E53935",
       "priority": 1000,
       "rules": [
-        {
-          "any": [
-            "LOCA",
-            "ADF"
-          ]
-        },
-        {
-          "all": [
-            "LOCALISATION",
-            "FUITE"
-          ]
-        },
-        {
-          "all": [
-            "LOCALISATION",
-            "ODEUR"
-          ]
-        },
-        {
-          "any": [
-            "ODEUR DE GAZ",
-            "ODEUR GAZ"
-          ]
-        },
-        {
-          "all": [
-            "ODEUR",
-            "GAZ"
-          ]
-        },
-        {
-          "all": [
-            "FUITE",
-            "GAZ"
-          ],
-          "any2": [
-            "ALERTE",
-            "APPEL",
-            "URGENCE",
-            "LOCALISATION",
-            "INTERVENTION"
-          ]
-        },
-        {
-          "all": [
-            "SURVEILLANCE",
-            "FUITE"
-          ]
-        },
-        {
-          "all": [
-            "RECHERCHE",
-            "FUITE",
-            "PIED"
-          ]
-        }
+        { "any": ["LOCA", "ADF"] },
+        { "all": ["LOCALISATION", "FUITE"] },
+        { "all": ["LOCALISATION", "ODEUR"] },
+        { "any": ["ODEUR DE GAZ", "ODEUR GAZ"] },
+        { "all": ["ODEUR", "GAZ"] },
+        { "all": ["FUITE", "GAZ"], "any2": ["ALERTE", "APPEL", "URGENCE", "LOCALISATION", "INTERVENTION"] }
       ],
       "exclude": [
-        "PREVENTIVE SUR CI",
-        "PREVENTIVE CI",
-        "MAINTENANCE CI CM",
-        "MAINTENANCE CICM",
-        "VISITE MAINTENANCE CI",
-        "CI CM MAINTENANCE",
-        "CICM MAINTENANCE"
+        "PREVENTIVE SUR CI", "PREVENTIVE CI",
+        "MAINTENANCE CI CM", "MAINTENANCE CICM",
+        "VISITE MAINTENANCE CI", "CI CM MAINTENANCE", "CICM MAINTENANCE",
+        "RECHERCHE SYSTEMATIQUE", "RECHERCHE DE FUITE A PIED",
+        "SAP", "RSF", "SURVEILLANCE A PIED",
+        "SURVEILLANCE DE FUITE"
       ]
+    },
+    {
+      "id": "MHS",
+      "label": "MHS",
+      "icon": "🔴",
+      "color": "#B71C1C",
+      "priority": 980,
+      "rules": [
+        { "any": ["MISE HORS SERVICE", "MHS"] },
+        { "all": ["HORS SERVICE"], "any2": ["COUPURE", "FOURNISSEUR", "ALS", "DEPOSE"] }
+      ],
+      "exclude": ["REMISE EN SERVICE"]
+    },
+    {
+      "id": "MES",
+      "label": "MES",
+      "icon": "🟢",
+      "color": "#2E7D32",
+      "priority": 970,
+      "rules": [
+        { "any": ["MISE EN SERVICE", "REMISE EN SERVICE"] },
+        { "all": ["POSTE CLIENT"] }
+      ],
+      "exclude": ["MISE HORS SERVICE", "MHS", "PREVENTIVE", "CICM", "CI CM"]
     },
     {
       "id": "IS_J1",
@@ -95,18 +68,9 @@
       "color": "#C62828",
       "priority": 950,
       "rules": [
-        {
-          "any": [
-            "IS J1",
-            "IS JOUR 1",
-            "INTERVENTION SECURITE JOUR 1"
-          ]
-        }
+        { "any": ["IS J1", "IS JOUR 1", "INTERVENTION SECURITE JOUR 1"] }
       ],
-      "exclude": [
-        "PIS",
-        "MANOEUVRABILITE"
-      ]
+      "exclude": ["PIS", "MANOEUVRABILITE"]
     },
     {
       "id": "IS_J2",
@@ -115,18 +79,9 @@
       "color": "#C62828",
       "priority": 949,
       "rules": [
-        {
-          "any": [
-            "IS J2",
-            "IS JOUR 2",
-            "INTERVENTION SECURITE JOUR 2"
-          ]
-        }
+        { "any": ["IS J2", "IS JOUR 2", "INTERVENTION SECURITE JOUR 2"] }
       ],
-      "exclude": [
-        "PIS",
-        "MANOEUVRABILITE"
-      ]
+      "exclude": ["PIS", "MANOEUVRABILITE"]
     },
     {
       "id": "IS_J3",
@@ -135,18 +90,9 @@
       "color": "#C62828",
       "priority": 948,
       "rules": [
-        {
-          "any": [
-            "IS J3",
-            "IS JOUR 3",
-            "INTERVENTION SECURITE JOUR 3"
-          ]
-        }
+        { "any": ["IS J3", "IS JOUR 3", "INTERVENTION SECURITE JOUR 3"] }
       ],
-      "exclude": [
-        "PIS",
-        "MANOEUVRABILITE"
-      ]
+      "exclude": ["PIS", "MANOEUVRABILITE"]
     },
     {
       "id": "DEP_J1",
@@ -155,18 +101,9 @@
       "color": "#FB8C00",
       "priority": 920,
       "rules": [
-        {
-          "any": [
-            "DEP J1",
-            "DEP JOUR 1",
-            "DEPANNAGE JOUR 1"
-          ]
-        }
+        { "any": ["DEP J1", "DEP JOUR 1", "DEPANNAGE JOUR 1"] }
       ],
-      "exclude": [
-        "PIS",
-        "MANOEUVRABILITE"
-      ]
+      "exclude": ["PIS", "MANOEUVRABILITE"]
     },
     {
       "id": "DEP_J2",
@@ -175,18 +112,9 @@
       "color": "#FB8C00",
       "priority": 919,
       "rules": [
-        {
-          "any": [
-            "DEP J2",
-            "DEP JOUR 2",
-            "DEPANNAGE JOUR 2"
-          ]
-        }
+        { "any": ["DEP J2", "DEP JOUR 2", "DEPANNAGE JOUR 2"] }
       ],
-      "exclude": [
-        "PIS",
-        "MANOEUVRABILITE"
-      ]
+      "exclude": ["PIS", "MANOEUVRABILITE"]
     },
     {
       "id": "DEP_J3",
@@ -195,17 +123,24 @@
       "color": "#FB8C00",
       "priority": 918,
       "rules": [
-        {
-          "any": [
-            "DEP J3",
-            "DEP JOUR 3",
-            "DEPANNAGE JOUR 3"
-          ]
-        }
+        { "any": ["DEP J3", "DEP JOUR 3", "DEPANNAGE JOUR 3"] }
+      ],
+      "exclude": ["PIS", "MANOEUVRABILITE"]
+    },
+    {
+      "id": "SURV_FUITE",
+      "label": "SURV. FUITE",
+      "icon": "👁️",
+      "color": "#FF7043",
+      "priority": 890,
+      "rules": [
+        { "all": ["SURVEILLANCE", "FUITE"] },
+        { "any": ["SUIVI DES ALERTE DE FUITE"] },
+        { "all": ["SURVEILLANCE"], "any2": ["RP2262", "RP2263", "RP2264", "RP2265", "RP2266"] }
       ],
       "exclude": [
-        "PIS",
-        "MANOEUVRABILITE"
+        "RECHERCHE SYSTEMATIQUE", "A PIED", "SAP", "RSF",
+        "LOCALISATION", "ADF", "ODEUR"
       ]
     },
     {
@@ -215,23 +150,25 @@
       "color": "#FDD835",
       "priority": 880,
       "rules": [
-        {
-          "any": [
-            "RSF",
-            "SAP",
-            "RECHERCHE DE FUITE",
-            "SURVEILLANCE A PIED",
-            "A PIED"
-          ]
-        }
+        { "any": ["RSF", "SAP", "RECHERCHE DE FUITE", "SURVEILLANCE A PIED", "A PIED", "RECHERCHE SYSTEMATIQUE"] }
       ],
-      "exclude": [
-        "PIS",
-        "MANOEUVRABILITE",
-        "PREVENTIVE",
-        "CI CM",
-        "CICM"
-      ]
+      "exclude": ["PIS", "MANOEUVRABILITE", "PREVENTIVE", "CI CM", "CICM"]
+    },
+    {
+      "id": "MAINT_CORRECTIVE",
+      "label": "MAINT CORR.",
+      "icon": "🔧⚠️",
+      "color": "#E65100",
+      "priority": 860,
+      "rules": [
+        { "any": ["MAINTENANCE CORRECTIVE"] },
+        { "all": ["CORRECTIVE", "BRANCHEMENT"] },
+        { "all": ["CHANGEMENT", "COMPTEUR"] },
+        { "all": ["REMPLACEMENT", "COMPTEUR"] },
+        { "all": ["COMPTEUR", "GRIPPE"] },
+        { "all": ["CORRECTIVE"], "any2": ["DETENTE", "COMPTAGE", "AVAL OCG"] }
+      ],
+      "exclude": ["PREVENTIVE", "VISITE MAINTENANCE", "CICM", "CI CM", "RSF", "SAP"]
     },
     {
       "id": "MAINT_CICM",
@@ -240,41 +177,20 @@
       "color": "#1E88E5",
       "priority": 850,
       "rules": [
-        {
-          "any": [
-            "CICM",
-            "CI CM",
-            "CI-CM"
-          ]
-        },
-        {
-          "all": [
-            "MAINTENANCE",
-            "CI"
-          ],
-          "any2": [
-            "PREVENTIVE",
-            "CORRECTIVE",
-            "VISITE"
-          ]
-        },
-        {
-          "any": [
-            "VISITE MAINTENANCE CI CM",
-            "VISITE MAINTENANCE CI-CM",
-            "MAINTENANCE CICM",
-            "MAINTENANCE PREVENTIVE SUR CI CM",
-            "MAINTENANCE PREVENTIVE SUR CI-CM",
-            "MAINTENANCE CI CM",
-            "OCG",
-            "DETENDEUR COLLECTIF",
-            "REGULATEUR COLLECTIF"
+        { "any": ["CICM", "CI CM", "CI-CM"] },
+        { "all": ["MAINTENANCE", "CI"], "any2": ["PREVENTIVE", "VISITE"] },
+        { "any": [
+            "VISITE MAINTENANCE CI CM", "VISITE MAINTENANCE CI-CM",
+            "MAINTENANCE CICM", "MAINTENANCE PREVENTIVE SUR CI CM",
+            "MAINTENANCE PREVENTIVE SUR CI-CM", "MAINTENANCE CI CM",
+            "DETENDEUR COLLECTIF", "REGULATEUR COLLECTIF"
           ]
         }
       ],
       "exclude": [
-        "RSF",
-        "SAP"
+        "RSF", "SAP",
+        "MAINTENANCE CORRECTIVE", "CORRECTIVE SUR BRANCHEMENT",
+        "CHANGEMENT DE COMPTEUR", "REMPLACEMENT COMPTEUR"
       ]
     },
     {
@@ -284,37 +200,10 @@
       "color": "#6A1B9A",
       "priority": 820,
       "rules": [
-        {
-          "all": [
-            "ROBINET",
-            "RESEAU"
-          ],
-          "any": [
-            "MAINTENANCE",
-            "REMPLACEMENT",
-            "REPARATION",
-            "GRAISSAGE",
-            "REMISE EN ETAT"
-          ]
-        },
-        {
-          "all": [
-            "VANNE",
-            "RESEAU"
-          ],
-          "any": [
-            "MAINTENANCE",
-            "REMPLACEMENT",
-            "REPARATION",
-            "GRAISSAGE",
-            "REMISE EN ETAT"
-          ]
-        }
+        { "all": ["ROBINET", "RESEAU"], "any2": ["MAINTENANCE", "REMPLACEMENT", "REPARATION", "GRAISSAGE", "REMISE EN ETAT"] },
+        { "all": ["VANNE", "RESEAU"], "any2": ["MAINTENANCE", "REMPLACEMENT", "REPARATION", "GRAISSAGE", "REMISE EN ETAT"] }
       ],
-      "exclude": [
-        "RSF",
-        "SAP"
-      ]
+      "exclude": ["RSF", "SAP"]
     },
     {
       "id": "PIS",
@@ -323,176 +212,19 @@
       "color": "#8E24AA",
       "priority": 800,
       "rules": [
-        {
-          "any": [
-            "PIS"
-          ]
-        },
-        {
-          "all": [
-            "MANOEUVRABILITE"
-          ],
-          "any": [
-            "ROBINET",
-            "VANNE",
-            "ORGANE DE COUPURE"
-          ]
-        }
+        { "any": ["PIS"] },
+        { "all": ["MANOEUVRABILITE"], "any2": ["ROBINET", "VANNE", "ORGANE DE COUPURE"] }
       ],
-      "exclude": [
-        "RSF",
-        "SAP",
-        "MAINTENANCE",
-        "REMPLACEMENT",
-        "REPARATION",
-        "GRAISSAGE",
-        "REMISE EN ETAT"
-      ]
+      "exclude": ["RSF", "SAP", "MAINTENANCE", "REMPLACEMENT", "REPARATION", "GRAISSAGE", "REMISE EN ETAT"]
     },
     {
-      "id": "TRAVAUX",
-      "label": "TRAVAUX",
-      "icon": "🛠️",
-      "color": "#546E7A",
-      "priority": 700,
+      "id": "EAP",
+      "label": "EAP",
+      "icon": "📋",
+      "color": "#00ACC1",
+      "priority": 760,
       "rules": [
-        {
-          "any": [
-            "TRAVAUX",
-            "CHANTIER",
-            "RENOUVELLEMENT DE BRANCHEMENT",
-            "CREATION DE BRANCHEMENT",
-            "MODIFICATION BRANCHEMENT",
-            "CONSTRUCTION DE BRANCHEMENT",
-            "RACCORDEMENT",
-            "SOUDE",
-            "SOUDAGE",
-            "BRASAGE"
-          ]
-        }
-      ],
-      "exclude": [
-        "RSF",
-        "SAP",
-        "PIS",
-        "MANOEUVRABILITE",
-        "REUNION",
-        "EAP",
-        "ENTRETIEN ANNUEL",
-        "PREPARATION EAP",
-        "FORMATION",
-        "PEDAGOGIQUE"
-      ]
-    },
-    {
-      "id": "IDENT",
-      "label": "IDENT",
-      "icon": "🔍",
-      "color": "#90A4AE",
-      "priority": 650,
-      "rules": [
-        {
-          "any": [
-            "IDENTIFICATION",
-            "REPERAGE",
-            "LEVE DE DOUTE",
-            "POSITION INCERTAINE"
-          ]
-        }
-      ],
-      "exclude": [
-        "RSF",
-        "SAP",
-        "ODEUR",
-        "FUITE"
-      ]
-    },
-    {
-      "id": "NEUF",
-      "label": "NEUF",
-      "icon": "🏢",
-      "color": "#607D8B",
-      "priority": 620,
-      "rules": [
-        {
-          "any": [
-            "IMMEUBLE NEUF",
-            "BATIMENT NEUF",
-            "PROGRAMME NEUF",
-            "MISE EN GAZ IMMEUBLE",
-            "MISE EN SERVICE IMMEUBLE"
-          ]
-        }
-      ],
-      "exclude": [
-        "RENOUVELLEMENT",
-        "DEPANNAGE"
-      ]
-    },
-    {
-      "id": "CLIENT",
-      "label": "CLIENT",
-      "icon": "👤",
-      "color": "#43A047",
-      "priority": 600,
-      "rules": [
-        {
-          "any": [
-            "ACTIVITE CLIENTELE",
-            "CLIENT",
-            "COMPTEUR",
-            "RENDEZ VOUS CLIENT",
-            "MISE EN SERVICE",
-            "REMISE EN SERVICE",
-            "VERIF BRANCHEMENT",
-            "VERIFIER BRANCHEMENT"
-          ]
-        }
-      ],
-      "exclude": [
-        "RSF",
-        "SAP",
-        "TRAVAUX",
-        "PIS",
-        "CI CM",
-        "CICM"
-      ]
-    },
-    {
-      "id": "MAGASIN",
-      "label": "MAGASIN",
-      "icon": "📦",
-      "priority": 520,
-      "color": "#8D6E63",
-      "rules": [
-        {
-          "any": [
-            "MAGASIN",
-            "APPROVISIONNEMENT",
-            "LOGISTIQUE",
-            "STOCK"
-          ]
-        }
-      ],
-      "exclude": []
-    },
-    {
-      "id": "PEDAGO",
-      "label": "PÉDAGO",
-      "icon": "🎓",
-      "color": "#5C6BC0",
-      "priority": 480,
-      "rules": [
-        {
-          "any": [
-            "AIRE PEDAGOGIQUE",
-            "PEDAGOGIQUE",
-            "FORMATION TERRAIN",
-            "EXERCICE",
-            "MISE EN SITUATION",
-            "MAINTIEN DE COMPETENCE"
-          ]
-        }
+        { "any": ["EAP", "ENTRETIEN ANNUEL", "ENTRETIEN ANNUEL PROFESSIONNEL", "ENTRETIEN PROFESSIONNEL", "PREPARATION EAP", "DEMARCHE ETHIQUE"] }
       ],
       "exclude": []
     },
@@ -503,39 +235,99 @@
       "color": "#26A69A",
       "priority": 750,
       "rules": [
-        {
-          "any": [
-            "REUNION",
-            "REUNION EQUIPE",
-            "POINT EQUIPE",
-            "REUNION OPERATIONNELLE",
-            "REUNION HEBDO",
-            "REUNION MENSUELLE"
+        { "any": ["REUNION", "REUNION EQUIPE", "POINT EQUIPE", "REUNION OPERATIONNELLE", "REUNION HEBDO", "REUNION MENSUELLE"] }
+      ],
+      "exclude": ["1/4", "QUART D HEURE", "15 MIN"]
+    },
+    {
+      "id": "TRAVAUX",
+      "label": "TRAVAUX",
+      "icon": "🛠️",
+      "color": "#546E7A",
+      "priority": 700,
+      "rules": [
+        { "any": [
+            "TRAVAUX", "CHANTIER",
+            "RENOUVELLEMENT DE BRANCHEMENT", "CREATION DE BRANCHEMENT",
+            "MODIFICATION BRANCHEMENT", "CONSTRUCTION DE BRANCHEMENT",
+            "RACCORDEMENT", "SOUDE", "SOUDAGE", "BRASAGE"
           ]
         }
       ],
       "exclude": [
-        "1/4",
-        "QUART D HEURE",
-        "15 MIN"
+        "RSF", "SAP", "PIS", "MANOEUVRABILITE",
+        "REUNION", "EAP", "ENTRETIEN ANNUEL", "PREPARATION EAP",
+        "FORMATION", "PEDAGOGIQUE", "MAINTIEN DE COMPETENCE"
       ]
     },
     {
-      "id": "EAP",
-      "label": "EAP",
-      "icon": "📋",
-      "color": "#00ACC1",
-      "priority": 760,
+      "id": "VISUELLE",
+      "label": "VISUELLE",
+      "icon": "👁️",
+      "color": "#78909C",
+      "priority": 680,
       "rules": [
-        {
-          "any": [
-            "EAP",
-            "ENTRETIEN ANNUEL",
-            "ENTRETIEN ANNUEL PROFESSIONNEL",
-            "ENTRETIEN PROFESSIONNEL",
-            "PREPARATION EAP"
-          ]
-        }
+        { "any": ["VISUELLE", "INSPECTION VISUELLE", "CONTROLE VISUEL"] },
+        { "all": ["FONTE"], "any2": ["VISUELLE", "INSPECTION", "CONTROLE", "170", "150", "100", "200"] }
+      ],
+      "exclude": ["CICM", "CI CM", "PREVENTIVE"]
+    },
+    {
+      "id": "IDENT",
+      "label": "IDENT",
+      "icon": "🔍",
+      "color": "#90A4AE",
+      "priority": 650,
+      "rules": [
+        { "any": ["IDENTIFICATION", "REPERAGE", "LEVE DE DOUTE", "POSITION INCERTAINE"] }
+      ],
+      "exclude": ["RSF", "SAP", "ODEUR", "FUITE"]
+    },
+    {
+      "id": "NEUF",
+      "label": "NEUF",
+      "icon": "🏢",
+      "color": "#607D8B",
+      "priority": 620,
+      "rules": [
+        { "any": ["IMMEUBLE NEUF", "BATIMENT NEUF", "PROGRAMME NEUF", "MISE EN GAZ IMMEUBLE", "MISE EN SERVICE IMMEUBLE"] }
+      ],
+      "exclude": ["RENOUVELLEMENT", "DEPANNAGE"]
+    },
+    {
+      "id": "CLIENT",
+      "label": "CLIENT",
+      "icon": "👤",
+      "color": "#43A047",
+      "priority": 600,
+      "rules": [
+        { "any": ["ACTIVITE CLIENTELE", "RENDEZ VOUS CLIENT", "VERIF BRANCHEMENT", "VERIFIER BRANCHEMENT"] }
+      ],
+      "exclude": [
+        "RSF", "SAP", "TRAVAUX", "PIS", "CI CM", "CICM",
+        "MISE HORS SERVICE", "MHS", "MISE EN SERVICE", "REMISE EN SERVICE",
+        "MAINTENANCE CORRECTIVE"
+      ]
+    },
+    {
+      "id": "MAGASIN",
+      "label": "MAGASIN",
+      "icon": "📦",
+      "color": "#8D6E63",
+      "priority": 520,
+      "rules": [
+        { "any": ["MAGASIN", "APPROVISIONNEMENT", "LOGISTIQUE", "STOCK"] }
+      ],
+      "exclude": []
+    },
+    {
+      "id": "PEDAGO",
+      "label": "PÉDAGO",
+      "icon": "🎓",
+      "color": "#5C6BC0",
+      "priority": 480,
+      "rules": [
+        { "any": ["AIRE PEDAGOGIQUE", "PEDAGOGIQUE", "FORMATION TERRAIN", "EXERCICE", "MISE EN SITUATION", "MAINTIEN DE COMPETENCE"] }
       ],
       "exclude": []
     },
@@ -546,61 +338,31 @@
       "color": "#039BE5",
       "priority": 420,
       "rules": [
-        {
-          "any": [
-            "1/4",
-            "QUART D HEURE",
-            "15 MIN"
-          ],
-          "any2": [
-            "COM",
-            "SECURITE",
-            "BRIEFING",
-            "COM CLI"
-          ]
-        }
+        { "any": ["1/4", "QUART D HEURE", "15 MIN"], "any2": ["COM", "SECURITE", "BRIEFING", "COM CLI"] }
       ],
       "exclude": []
     },
     {
       "id": "SORTIE_ASTREINTE",
       "label": "SORTIE ASTR.",
-      "icon": "🚑",
+      "icon": "🚒",
       "color": "#D84315",
       "priority": 411,
       "rules": [
-        {
-          "any": [
-            "SORTIE ASTREINTE",
-            "INTERVENTION ASTREINTE",
-            "RETOUR ASTREINTE",
-            "APPEL ASTREINTE"
-          ]
-        }
+        { "any": ["SORTIE ASTREINTE", "INTERVENTION ASTREINTE", "RETOUR ASTREINTE", "APPEL ASTREINTE"] }
       ],
       "exclude": []
     },
     {
       "id": "ASTREINTE",
       "label": "ASTREINTE",
-      "icon": "🚑",
+      "icon": "🚒",
       "color": "#FFB74D",
       "priority": 410,
       "rules": [
-        {
-          "any": [
-            "ASTREINTE",
-            "PERIODE ASTREINTE",
-            "GARDE"
-          ]
-        }
+        { "any": ["ASTREINTE", "PERIODE ASTREINTE", "GARDE"] }
       ],
-      "exclude": [
-        "SORTIE ASTREINTE",
-        "INTERVENTION ASTREINTE",
-        "RETOUR ASTREINTE",
-        "APPEL ASTREINTE"
-      ]
+      "exclude": ["SORTIE ASTREINTE", "INTERVENTION ASTREINTE", "RETOUR ASTREINTE", "APPEL ASTREINTE"]
     }
   ],
   "notes": {
@@ -608,40 +370,38 @@
       "display": {
         "maxBadgesPerBT": 2,
         "stackOrder": [
-          "LOCA",
-          "IS_J1",
-          "IS_J2",
-          "IS_J3",
-          "DEP_J1",
-          "DEP_J2",
-          "DEP_J3",
-          "RSF_SAP",
-          "MAINT_CICM",
-          "MAINT_ROBINET",
-          "PIS",
-          "EAP",
-          "REUNION",
-          "TRAVAUX",
-          "IDENT",
-          "NEUF",
-          "CLIENT",
-          "MAGASIN",
-          "PEDAGO",
-          "COM_1_4",
-          "SORTIE_ASTREINTE",
-          "ASTREINTE"
+          "LOCA", "MHS", "MES",
+          "IS_J1", "IS_J2", "IS_J3",
+          "DEP_J1", "DEP_J2", "DEP_J3",
+          "SURV_FUITE", "RSF_SAP",
+          "MAINT_CORRECTIVE", "MAINT_CICM", "MAINT_ROBINET",
+          "PIS", "EAP", "REUNION",
+          "TRAVAUX", "VISUELLE", "IDENT", "NEUF",
+          "CLIENT", "MAGASIN", "PEDAGO",
+          "COM_1_4", "SORTIE_ASTREINTE", "ASTREINTE"
         ]
       }
     },
     "changelog": {
+      "v3.0": [
+        "AJOUT MHS: Mise Hors Service (priority 980)",
+        "AJOUT MES: Mise En Service (priority 970)",
+        "AJOUT VISUELLE: Inspection visuelle (priority 680)",
+        "AJOUT MAINT_CORRECTIVE: Maintenance corrective branchement (priority 860)",
+        "AJOUT SURV_FUITE: Surveillance de fuite (priority 890)",
+        "FIX LOCA: Ajout exclusions RSF/SAP/SURVEILLANCE pour éviter faux positifs",
+        "FIX MAINT_CICM: Retrait OCG des rules + exclusions corrective/compteur",
+        "FIX CLIENT: Retrait MISE EN SERVICE/COMPTEUR + ajout exclusions MHS/MES",
+        "FIX TRAVAUX: Ajout exclusion MAINTIEN DE COMPETENCE (PEDAGO prime)",
+        "StackOrder: Réordonné avec MHS, MES, SURV_FUITE, MAINT_CORRECTIVE, VISUELLE"
+      ],
       "v2.0": [
-        "MAINT_CICM: Augmentation priorité 840→850 + ajout règles robustes CI CM",
+        "MAINT_CICM: Augmentation priorité 840→850",
         "LOCA: Ajout exclusions fortes maintenance CI-CM/CICM",
         "RSF_SAP: Ajout exclusions PREVENTIVE, CI CM, CICM",
-        "REUNION: Priorité augmentée 460→750 (supérieur à TRAVAUX)",
-        "EAP: Priorité augmentée 440→760 (supérieur à TRAVAUX)",
-        "TRAVAUX: Ajout exclusions REUNION, EAP, FORMATION",
-        "StackOrder: Réordonné avec EAP et REUNION avant TRAVAUX"
+        "REUNION: Priorité augmentée 460→750",
+        "EAP: Priorité augmentée 440→760",
+        "TRAVAUX: Ajout exclusions REUNION, EAP, FORMATION"
       ]
     }
   }
