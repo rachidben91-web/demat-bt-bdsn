@@ -10,7 +10,7 @@
     },
     "matchLogic": {
       "mode": "multi_match_stack",
-      "maxBadgesPerBT": 2
+      "maxBadgesPerBT": 1
     }
   },
   "badges": [
@@ -368,7 +368,7 @@
   "notes": {
     "ui": {
       "display": {
-        "maxBadgesPerBT": 2,
+        "maxBadgesPerBT": 1,
         "stackOrder": [
           "LOCA", "MHS", "MES",
           "IS_J1", "IS_J2", "IS_J3",
