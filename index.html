@@ -2,7 +2,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>DEMAT-BT — Référent & Brief</title>
+  <title>Recette DEMAT-BT — Référent & Brief</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 
@@ -105,7 +105,7 @@
       <div class="divider"></div>
 
       <div class="hint">
-        Règle : <b>toute page après un BT</b> est rattachée à ce BT <b>jusqu'au BT suivant</b>.
+        
       </div>
     </aside>
 
@@ -162,10 +162,15 @@
       <section id="viewBrief" class="view">
         <div class="briefHeader">
           <div>
-            <h2 class="h2">Brief équipe (Samsung Flip)</h2>
+            <h2 class="h2">Brief équipe</h2>
             <div class="sub">Sélectionne un technicien → ses BT + docs s'affichent instantanément.</div>
           </div>
           <div class="briefMeta" id="briefMeta"></div>
+          <div class="briefActions">
+            <button id="btnExportDay" class="btn" title="Générer un PDF unique pour la journée du technicien">
+              <span>📦</span> Générer la journée (PDF)
+            </button>
+          </div>
         </div>
 
         <div id="briefList" class="briefList"></div>
