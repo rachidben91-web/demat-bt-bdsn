@@ -1,157 +1,287 @@
-/* js/ui/timeline.js — DEMAT-BT v11.0.0 — 15/02/2026
-   Vue timeline (planning journalier 7h30 → 17h00)
+/* js/ui/timeline.js — DEMAT-BT v11.0.1 — 16/02/2026
+   Vue "Activités" : à gauche les activités, à droite les techniciens (chips)
+   Remplace la timeline horaire (suppression de la zone temps)
 */
 
-function renderTimeline(filtered, timeline) {
-  timeline.innerHTML = "";
-  if (filtered.length === 0) {
-    timeline.innerHTML = `<div class="hint" style="padding:16px;">Aucun BT à afficher.</div>`;
-    return;
-  }
+/* global state, $, renderAll, mapTechByNni, techKey */
 
-  // Construire la grille horaire (quarts d'heure)
-  const timeSlots = [];
-  for (let h = 7; h <= 17; h++) {
-    for (let m = 0; m < 60; m += 15) {
-      if (h === 7 && m < 30) continue;
-      if (h === 17 && m > 0) continue;
-      timeSlots.push({
-        hour: h, min: m,
-        value: h + m / 60,
-        label: m === 0 ? `${h}h` : `${String(m).padStart(2, "0")}`,
-        isHour: m === 0
-      });
+// -------------------------
+// Config des activités (Vue Manager)
+// -------------------------
+const ACTIVITY_ORDER = [
+  "TRAVAUX",
+  "MAINTENANCE",
+  "FUITE",
+  "LOCALISATION",
+  "ADMIN",
+  "EAP",
+  "AUTRES",
+];
+
+const ACTIVITY_CONFIG = {
+  TRAVAUX:       { icon: "🛠️", label: "TRAVAUX" },
+  MAINTENANCE:   { icon: "🔧", label: "MAINTENANCE" },
+  FUITE:         { icon: "🚨", label: "FUITE / URGENCE" },
+  LOCALISATION:  { icon: "🧭", label: "LOCALISATION / RECHERCHE" },
+  ADMIN:         { icon: "📋", label: "ADMIN / BRIEF" },
+  EAP:           { icon: "🧪", label: "EAP / FORMATION" },
+  AUTRES:        { icon: "📦", label: "AUTRES / À CLASSER" },
+};
+
+// -------------------------
+// Helpers
+// -------------------------
+function _ensureActivityStylesOnce() {
+  if (document.getElementById("activityViewStyles")) return;
+
+  const style = document.createElement("style");
+  style.id = "activityViewStyles";
+  style.textContent = `
+    .activityView { padding: 14px; }
+    .activityRow {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 14px;
+      padding: 12px 10px;
+      border: 1px solid rgba(15,23,42,0.08);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.85);
+      margin-bottom: 10px;
     }
-  }
-
-  // Grouper BT par technicien
-  const btsByTech = new Map();
-  for (const bt of filtered) {
-    for (const m of bt.team || []) {
-      const tech = mapTechByNni(m.nni);
-      const key = tech ? techKey(tech) : m.nni;
-      const name = tech ? tech.name : m.name;
-      if (!btsByTech.has(key)) btsByTech.set(key, []);
-      btsByTech.get(key).push(bt);
+    .activityLeft { display:flex; flex-direction:column; gap:6px; }
+    .activityTitle {
+      display:flex; align-items:center; gap:8px;
+      font-weight: 800;
+      letter-spacing: 0.2px;
+      color: rgba(15,23,42,0.95);
     }
-  }
-
-  const techs = [...btsByTech.entries()].map(([id, bts]) => {
-    const tech = (window.TECHNICIANS || []).find(t => techKey(t) === id);
-    return [id, tech ? tech.name : id, bts];
-  }).sort((a, b) => a[1].localeCompare(b[1]));
-
-  // Container
-  const container = document.createElement("div");
-  container.style.overflowX = "auto";
-
-  const grid = document.createElement("div");
-  grid.className = "timeline-grid";
-  grid.style.gridTemplateColumns = `200px repeat(${timeSlots.length}, minmax(35px, 1fr))`;
-  grid.style.gridTemplateRows = `48px repeat(${techs.length}, 56px)`;
-
-  // Header
-  const corner = document.createElement("div");
-  corner.className = "timeline-corner";
-  corner.textContent = `👥 ${techs.length} techniciens`;
-  grid.appendChild(corner);
-
-  timeSlots.forEach((slot, i) => {
-    const cell = document.createElement("div");
-    cell.className = "timeline-hour";
-    cell.style.gridColumn = i + 2;
-    cell.style.fontSize = slot.isHour ? "11px" : "9px";
-    cell.style.fontWeight = slot.isHour ? "700" : "600";
-    cell.style.color = slot.isHour ? "var(--txt)" : "var(--muted)";
-    cell.textContent = slot.label;
-    grid.appendChild(cell);
-  });
-
-  // Lignes techniciens
-  techs.forEach(([techId, techName, techBTs], techIdx) => {
-    const rowNum = techIdx + 2;
-
-    // Cellule nom
-    const techCell = document.createElement("div");
-    techCell.className = "timeline-tech";
-    techCell.style.gridRow = rowNum;
-
-    const avatar = document.createElement("div");
-    avatar.className = "timeline-tech-avatar";
-    avatar.textContent = techName.substring(0, 2).toUpperCase();
-
-    const nameDiv = document.createElement("div");
-    nameDiv.style.cssText = "font-size:12px;line-height:1.3;";
-    nameDiv.textContent = techName;
-
-    techCell.appendChild(avatar);
-    techCell.appendChild(nameDiv);
-    grid.appendChild(techCell);
-
-    // Cellules vides
-    for (let i = 0; i < timeSlots.length; i++) {
-      const cell = document.createElement("div");
-      cell.className = "timeline-cell";
-      cell.style.gridRow = rowNum;
-      cell.style.gridColumn = i + 2;
-      if (timeSlots[i].isHour) cell.style.borderLeft = "2px solid var(--line-strong)";
-      grid.appendChild(cell);
+    .activityMeta {
+      font-size: 12px;
+      color: rgba(15,23,42,0.55);
+      font-weight: 600;
     }
-
-    // Blocs BT
-    techBTs.forEach(bt => {
-      const timeSlot = extractTimeSlot(bt);
-      const classification = classifyIntervention(bt);
-      const metierIds = Array.isArray(bt.badges) ? bt.badges : [];
-      const primaryMetier = metierIds.length ? getBadgeCfg(metierIds[0]) : null;
-
-      let startCol, colSpan;
-      if (timeSlot) {
-        const startVal = Math.max(timeSlot.start, 7.5);
-        const endVal = Math.min(timeSlot.end, 17);
-        startCol = Math.round((startVal - 7.5) * 4) + 2;
-        colSpan = Math.max(1, Math.round((endVal - startVal) * 4));
-      } else {
-        startCol = 2;
-        colSpan = 2;
-      }
-
-      const color = primaryMetier?.color || classification.color;
-
-      const btDiv = document.createElement("div");
-      btDiv.className = "timeline-bt-block";
-      btDiv.style.gridRow = rowNum;
-      btDiv.style.gridColumn = `${startCol} / span ${colSpan}`;
-      btDiv.style.background = `linear-gradient(135deg, ${color}, ${color}dd)`;
-      btDiv.style.borderRadius = "6px";
-      btDiv.style.padding = "4px 8px";
-      btDiv.style.cursor = "pointer";
-      btDiv.style.overflow = "hidden";
-      btDiv.style.boxShadow = "0 2px 6px rgba(0,0,0,0.15)";
-      btDiv.title = `${bt.id} — ${bt.objet || ""}`;
-
-      const idDiv = document.createElement("div");
-      idDiv.className = "timeline-bt-id";
-      idDiv.textContent = bt.id;
-      btDiv.appendChild(idDiv);
-
-      const typeDiv = document.createElement("div");
-      typeDiv.className = "timeline-bt-type";
-      typeDiv.textContent = primaryMetier ? primaryMetier.label : classification.label;
-      btDiv.appendChild(typeDiv);
-
-      if (timeSlot && colSpan >= 4) {
-        const timeDiv = document.createElement("div");
-        timeDiv.className = "timeline-bt-time";
-        timeDiv.textContent = timeSlot.text;
-        btDiv.appendChild(timeDiv);
-      }
-
-      btDiv.addEventListener("click", () => openModal(bt, bt.pageStart));
-      grid.appendChild(btDiv);
-    });
-  });
-
-  container.appendChild(grid);
-  timeline.appendChild(container);
+    .activityRight {
+      display:flex; flex-wrap:wrap;
+      gap: 8px;
+      align-items:flex-start;
+      padding-top: 2px;
+    }
+    .techChip {
+      border: 1px solid rgba(15,23,42,0.12);
+      background: rgba(248,250,252,0.9);
+      border-radius: 999px;
+      padding: 7px 10px;
+      font-weight: 700;
+      font-size: 12px;
+      color: rgba(15,23,42,0.92);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+      user-select: none;
+    }
+    .techChip:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(15,23,42,0.10);
+      background: rgba(255,255,255,0.98);
+    }
+    .techChipCount {
+      background: rgba(37,99,235,0.12);
+      color: rgba(30,58,138,0.95);
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-weight: 800;
+      font-size: 12px;
+      line-height: 1;
+    }
+    .techChipSub {
+      font-weight: 700;
+      opacity: .55;
+    }
+    .activityEmpty {
+      font-size: 12px;
+      color: rgba(15,23,42,0.45);
+      padding: 6px 0;
+      font-weight: 700;
+    }
+  `;
+  document.head.appendChild(style);
 }
+
+function _normStr(x) {
+  return String(x || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+}
+
+// Essaie d'extraire des mots-clés depuis badges/objet pour classer le BT
+function getBtActivity(bt) {
+  const badges = Array.isArray(bt?.badges) ? bt.badges : [];
+  const docs = Array.isArray(bt?.docs) ? bt.docs : [];
+  const raw = [
+    bt?.objet,
+    bt?.localisation,
+    bt?.client,
+    ...badges,
+    ...docs.map(d => d?.type),
+  ].filter(Boolean);
+
+  const s = _normStr(raw.join(" "));
+
+  // 1) FUITE
+  if (s.includes("FUITE") || s.includes("ALERTE") || s.includes("URGEN") || s.includes("SUIV FUITE") || s.includes("SUIV_FUITE")) {
+    return "FUITE";
+  }
+
+  // 2) LOCALISATION / LOCA
+  if (s.includes("LOCA") || s.includes("LOCALIS") || s.includes("RECHERC")) {
+    return "LOCALISATION";
+  }
+
+  // 3) ADMIN / BRIEF / 1/4 COM
+  if (s.includes("1/4") || s.includes("COM") || s.includes("BRIEF") || s.includes("ADMIN") || s.includes("BRIEFING")) {
+    return "ADMIN";
+  }
+
+  // 4) EAP / FORMATION
+  if (s.includes("EAP") || s.includes("FORMATION") || s.includes("COACH") || s.includes("TUTOR")) {
+    return "EAP";
+  }
+
+  // 5) MAINTENANCE
+  if (s.includes("MAINT") || s.includes("CICM") || s.includes("VISITE") || s.includes("PREVENT") || s.includes("ENTRETIEN")) {
+    return "MAINTENANCE";
+  }
+
+  // 6) TRAVAUX
+  if (s.includes("TRAV") || s.includes("CHANTIER") || s.includes("POSE") || s.includes("RACC") || s.includes("BRANCHEMENT")) {
+    return "TRAVAUX";
+  }
+
+  return "AUTRES";
+}
+
+// Récupère les techniciens d'un BT (noms + techId si possible)
+function getBtTechs(bt) {
+  const team = Array.isArray(bt?.team) ? bt.team : [];
+  const out = [];
+
+  for (const m of team) {
+    const nni = m?.nni || "";
+    let tech = null;
+    try { tech = (typeof mapTechByNni === "function") ? mapTechByNni(nni) : null; } catch (_) {}
+
+    const name = tech?.name || m?.name || nni || "Inconnu";
+
+    let id = "";
+    try { id = (tech && typeof techKey === "function") ? techKey(tech) : (nni || name); } catch (_) { id = nni || name; }
+
+    out.push({ id, name });
+  }
+  return out;
+}
+
+// Utilise le select existant (sidebar) pour filtrer proprement, sans toucher au moteur
+function applyTechFilter(techId) {
+  const sel = document.getElementById("techSelect");
+  if (!sel) return;
+
+  sel.value = techId;
+  sel.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+// -------------------------
+// Render "Activités"
+// -------------------------
+function renderActivitiesView(filteredBTs) {
+  _ensureActivityStylesOnce();
+
+  const root = document.getElementById("timelineView") || document.getElementById("timeline") || document.getElementById("mainView");
+  // NOTE: on garde des fallbacks car ton HTML peut nommer le container différemment selon versions
+  if (!root) return;
+
+  // On remplace totalement le contenu de la zone timeline
+  root.innerHTML = `<div class="activityView" id="activityViewRoot"></div>`;
+  const container = document.getElementById("activityViewRoot");
+
+  // Map: activity -> { btCount, techCountMap(Map techId -> {name,count}) }
+  const agg = new Map();
+  for (const a of ACTIVITY_ORDER) {
+    agg.set(a, { btCount: 0, techs: new Map() });
+  }
+
+  for (const bt of filteredBTs) {
+    const act = getBtActivity(bt);
+    if (!agg.has(act)) agg.set(act, { btCount: 0, techs: new Map() });
+
+    const entry = agg.get(act);
+    entry.btCount += 1;
+
+    const techs = getBtTechs(bt);
+    for (const t of techs) {
+      const cur = entry.techs.get(t.id) || { name: t.name, count: 0 };
+      cur.count += 1;
+      entry.techs.set(t.id, cur);
+    }
+  }
+
+  // Render ordered
+  for (const act of ACTIVITY_ORDER) {
+    const { icon, label } = ACTIVITY_CONFIG[act] || { icon: "📌", label: act };
+    const entry = agg.get(act) || { btCount: 0, techs: new Map() };
+
+    const techEntries = [...entry.techs.entries()]
+      .map(([id, v]) => ({ id, name: v.name, count: v.count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+
+    const techCount = techEntries.length;
+
+    const row = document.createElement("div");
+    row.className = "activityRow";
+
+    row.innerHTML = `
+      <div class="activityLeft">
+        <div class="activityTitle">${icon} ${label}</div>
+        <div class="activityMeta">${entry.btCount} BT <span class="techChipSub">•</span> ${techCount} technicien(s)</div>
+      </div>
+      <div class="activityRight" id="act_${act}"></div>
+    `;
+
+    container.appendChild(row);
+
+    const right = row.querySelector(`#act_${act}`);
+    if (!right) continue;
+
+    if (techEntries.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "activityEmpty";
+      empty.textContent = "— Aucun —";
+      right.appendChild(empty);
+      continue;
+    }
+
+    for (const t of techEntries) {
+      const chip = document.createElement("button");
+      chip.className = "techChip";
+      chip.type = "button";
+      chip.title = `Filtrer sur ${t.name}`;
+      chip.innerHTML = `<span>${t.name}</span><span class="techChipCount">${t.count}</span>`;
+      chip.addEventListener("click", () => applyTechFilter(t.id));
+      right.appendChild(chip);
+    }
+  }
+}
+
+// -------------------------
+// API publique (appelée par le moteur de rendu)
+// -------------------------
+// Selon ta V11, renderAll() appelle souvent renderTimeline(filtered).
+// On expose donc une fonction renderTimeline qui rend la vue Activités.
+function renderTimeline(filtered) {
+  renderActivitiesView(filtered || []);
+}
+
+window.renderTimeline = renderTimeline;
+window.renderActivitiesView = renderActivitiesView;
