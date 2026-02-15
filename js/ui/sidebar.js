@@ -35,6 +35,22 @@ function buildTypeChips() {
   }
 }
 
+const day = extractDayFromFilename(state.pdfFile?.name);
+
+if (day) {
+  pdfLabelElement.innerHTML = `
+    <div class="pdf-day-wrapper">
+      <div class="pdf-day-label">JOURNÉE</div>
+      <div class="pdf-day-badge">
+        <span class="pdf-day-icon">📅</span>
+        <span>${day}</span>
+      </div>
+    </div>
+  `;
+} else {
+  pdfLabelElement.textContent = state.pdfFile?.name || "Aucun PDF chargé";
+}
+
 // -------------------------
 // Liste techniciens (select dropdown avec compteurs)
 // -------------------------
