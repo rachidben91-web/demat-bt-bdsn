@@ -15,13 +15,31 @@ function setZonesStatus(msg) {
 function setPdfStatus(msg) {
   const el = $("pdfStatus");
   const badge = $("pdfBadge");
+
   if (el) {
-    el.textContent = msg.includes(".pdf") && msg.length > 30
-      ? msg.substring(0, 27) + "..." : msg;
+    const day = extractDayFromFilename(msg);
+
+    if (day) {
+      el.innerHTML = `
+        <div class="pdf-day-wrapper">
+          <div class="pdf-day-label">JOURNÉE</div>
+          <div class="pdf-day-badge">
+            <span class="pdf-day-icon">📅</span>
+            <span>${day}</span>
+          </div>
+        </div>
+      `;
+    } else {
+      el.textContent = msg.includes(".pdf") && msg.length > 30
+        ? msg.substring(0, 27) + "..." : msg;
+    }
   }
+
   if (badge) {
-    badge.classList.toggle("status--loaded",
-      msg !== "Aucun PDF chargé" && msg !== "Erreur PDF" && msg.includes("pdf"));
+    badge.classList.toggle(
+      "status--loaded",
+      msg !== "Aucun PDF chargé" && msg !== "Erreur PDF" && msg.includes("pdf")
+    );
   }
 }
 
