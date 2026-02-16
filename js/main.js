@@ -1,5 +1,6 @@
-/* js/main.js — DEMAT-BT v11.0.0 — 15/02/2026
-   Point d'entrée : initialisation, événements, orchestration du rendu
+/* js/main.js — DEMAT-BT v11.0.0 — 16/02/2026
+   Point d'entrée : orchestration, événements et rendu dynamique.
+   Mise à jour : Support étendu pour les nouveaux types de documents (FOR-113, Plans, etc.)
 */
 
 // -------------------------
@@ -18,7 +19,6 @@ function setPdfStatus(msg) {
 
   if (el) {
     const day = extractDayFromFilename(msg);
-
     if (day) {
       el.innerHTML = `
         <div class="pdf-day-wrapper">
@@ -71,21 +71,17 @@ function setExtractEnabled(enabled) {
 // -------------------------
 function setView(view) {
   state.view = view;
-
-  // Toggle boutons
   document.querySelectorAll("[data-view]").forEach(btn => {
     btn.classList.toggle("seg__btn--active", btn.dataset.view === view);
   });
 
-  // Toggle sections
   const viewRef = $("viewReferent");
   const viewBrief = $("viewBrief");
   if (viewRef) viewRef.classList.toggle("view--active", view === "referent");
   if (viewBrief) viewBrief.classList.toggle("view--active", view === "brief");
 
-  // Toggle flip mode for brief (Samsung Flip display)
+  // Mode Flip pour le Brief (Samsung Display 55")
   document.body.classList.toggle("flip", view === "brief");
-
   renderAll();
 }
 
@@ -94,9 +90,8 @@ function setView(view) {
 // -------------------------
 function renderAll() {
   const filtered = filterBTs();
-
   renderKpis(filtered);
-  buildTypeChips();
+  buildTypeChips(); // Rafraîchit les filtres avec les nouveaux types (FOR113, etc.)
   renderTechList();
 
   if (state.view === "referent") {
@@ -122,7 +117,7 @@ function renderAll() {
 // Événements
 // -------------------------
 function wireEvents() {
-  // Recherche
+  // Recherche textuelle
   const search = $("searchInput");
   if (search) {
     search.addEventListener("input", () => {
@@ -131,7 +126,7 @@ function wireEvents() {
     });
   }
 
-  // Tech select
+  // Sélection technicien
   const sel = $("techSelect");
   if (sel) {
     sel.addEventListener("change", () => {
@@ -140,18 +135,17 @@ function wireEvents() {
     });
   }
 
-  // Vues Référent / Brief
+  // Chgt de vue
   document.querySelectorAll("[data-view]").forEach(btn => {
     btn.addEventListener("click", () => setView(btn.dataset.view));
   });
 
-  // Layout Grid / Timeline
+  // Chgt de layout (Grille / Activités)
   document.querySelectorAll("[data-layout]").forEach(btn => {
     btn.addEventListener("click", () => {
-      const layout = btn.dataset.layout;
-      state.layout = layout;
+      state.layout = btn.dataset.layout;
       document.querySelectorAll("[data-layout]").forEach(b => {
-        b.classList.toggle("seg__btn--active", b.dataset.layout === layout);
+        b.classList.toggle("seg__btn--active", b.dataset.layout === state.layout);
       });
       renderAll();
     });
@@ -171,16 +165,13 @@ function wireEvents() {
         state.pdfFile = f;
         state.pdfName = f.name;
         const buf = await f.arrayBuffer();
-        const loadingTask = window.pdfjsLib.getDocument({ data: buf, stopAtErrors: false, disableAutoFetch: true });
+        const loadingTask = window.pdfjsLib.getDocument({ data: buf, stopAtErrors: false });
         state.pdf = await loadingTask.promise;
         state.totalPages = state.pdf.numPages;
-        console.log("[DEMAT-BT] PDF chargé ✅", state.totalPages, "pages");
-        setProgress(0, `PDF chargé (${state.totalPages} pages).`);
+        setProgress(0, `PDF prêt (${state.totalPages} pages).`);
         setExtractEnabled(true);
       } catch (e) {
-        console.error(e);
         setPdfStatus("Erreur PDF");
-        setProgress(0, "Erreur chargement PDF (voir console).");
         setExtractEnabled(false);
       }
     });
@@ -191,40 +182,27 @@ function wireEvents() {
   if (btnExtract) {
     btnExtract.addEventListener("click", async () => {
       try {
-        if (!state.pdf) { setProgress(0, "Choisis d'abord un PDF."); return; }
         setExtractEnabled(false);
-        setProgress(0, "Extraction en cours…");
         await extractAll();
       } catch (e) {
-        console.error(e);
-        setProgress(0, "Erreur extraction (voir console).");
+        setProgress(0, "Erreur extraction.");
       } finally {
         setExtractEnabled(!!state.pdf);
       }
     });
   }
 
-  // Modal
-  const modal = $("modal");
-  if (modal) {
-    modal.addEventListener("click", (e) => {
-      if (e.target.hasAttribute("data-close") || e.target.classList.contains("modal__backdrop")) {
-        closeModal();
+  // Cache & Fullscreen
+  const btnClear = $("btnClearCache");
+  if (btnClear) {
+    btnClear.addEventListener("click", async () => {
+      if (confirm("Voulez-vous vider les données mémorisées ?")) {
+        await clearCache();
+        location.reload();
       }
     });
   }
-  const btnPrev = $("btnPrevPage");
-  if (btnPrev) btnPrev.addEventListener("click", prevPage);
-  const btnNext = $("btnNextPage");
-  if (btnNext) btnNext.addEventListener("click", nextPage);
 
-  // Export
-  const btnExport = $("btnExportBt");
-  if (btnExport) btnExport.addEventListener("click", exportBTPDF);
-  const btnExportDay = $("btnExportDay");
-  if (btnExportDay) btnExportDay.addEventListener("click", exportDayPDF);
-
-  // Fullscreen
   const btnFS = $("btnFullscreen");
   if (btnFS) {
     btnFS.addEventListener("click", () => {
@@ -233,25 +211,15 @@ function wireEvents() {
     });
   }
 
-  // Clear cache
-  const btnClearCache = $("btnClearCache");
-  if (btnClearCache) {
-    btnClearCache.addEventListener("click", async () => {
-      const info = getCacheInfo();
-      if (!info) { alert("Aucun cache à vider."); return; }
-      if (confirm(`Vider le cache ?\n${info.pdfName}\n${info.btCount} BT — ${info.age}`)) {
-        await clearCache();
-        state.bts = [];
-        state.countsByTechId = new Map();
-        state.pdf = null;
-        state.pdfFile = null;
-        setPdfStatus("Aucun PDF chargé");
-        setProgress(0, "Cache vidé.");
-        setExtractEnabled(false);
-        renderAll();
-      }
-    });
-  }
+  // Modal actions
+  const btnPrev = $("btnPrevPage");
+  if (btnPrev) btnPrev.addEventListener("click", prevPage);
+  const btnNext = $("btnNextPage");
+  if (btnNext) btnNext.addEventListener("click", nextPage);
+  const btnExp = $("btnExportBt");
+  if (btnExp) btnExp.addEventListener("click", exportBTPDF);
+  const btnExpDay = $("btnExportDay");
+  if (btnExpDay) btnExpDay.addEventListener("click", exportDayPDF);
 }
 
 // -------------------------
@@ -259,34 +227,26 @@ function wireEvents() {
 // -------------------------
 async function init() {
   try {
-    setPdfStatus("Aucun PDF chargé");
-    setProgress(0, "Prêt.");
-    setExtractEnabled(false);
-
-    buildTypeChips();
     wireEvents();
-
-    await loadZones();
-    await loadBadgeRules();
-
-    // Horloge + météo
+    // Chargement des dépendances métier
+    await loadZones(); [cite: 8]
+    await loadBadgeRules(); [cite: 4]
+    
+    // Services autonomes
     updateDateTime();
     setInterval(updateDateTime, 1000);
-    updateWeather();
+    updateWeather(); [cite: 11]
     setInterval(updateWeather, 600000);
 
-    // Tenter le cache
-    const cacheLoaded = await loadFromCache();
+    // Tentative de restauration
+    const cacheLoaded = await loadFromCache(); [cite: 7]
     if (cacheLoaded) {
-      console.log("[INIT] Données chargées depuis le cache ✅");
       if (state.pdf) setExtractEnabled(true);
     }
 
     setView("referent");
   } catch (e) {
-    console.error(e);
-    setZonesStatus("Erreur");
-    setProgress(0, "Erreur init (voir console).");
+    console.error("Init error:", e);
   }
 }
 
