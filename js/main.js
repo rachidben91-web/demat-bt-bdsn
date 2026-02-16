@@ -1,5 +1,6 @@
-/* js/main.js — DEMAT-BT v11.0.0 — 15/02/2026
+/* js/main.js — DEMAT-BT v11.0.0 — 16/02/2026
    Point d'entrée : initialisation, événements, orchestration du rendu
+   Mise à jour : Support synchronisé pour FOR-113, Plans et AT
 */
 
 // -------------------------
