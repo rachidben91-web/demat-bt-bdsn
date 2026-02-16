@@ -1,6 +1,7 @@
-/* js/pdf-extractor.js — DEMAT-BT v11.1.0 — 16/02/2026
+/* js/pdf-extractor.js — DEMAT-BT v11.1.1 — 16/02/2026
    Extraction PDF : détection intelligente des BT et de leurs pièces jointes (AT, FOR-113, Plans...)
    FIX v11.1: Détection documents annexes corrigée + suppression faux positifs PLAN/PROC/PHOTO
+   FIX v11.1.1: Retour CDN pour PDF.js (libs locales pas encore en place)
 */
 
 let ZONES = null;
@@ -24,29 +25,18 @@ function getZoneBBox(label) {
   return null;
 }
 
-// 2. Initialisation de PDF.js
+// 2. Initialisation de PDF.js (CDN — stable)
 async function ensurePdfJs() {
   if (window.pdfjsLib) return;
   await new Promise((resolve, reject) => {
     const s = document.createElement("script");
-    // Tente d'abord les libs locales, fallback CDN
-    s.src = "./libs/pdfjs/pdf.min.js";
-    s.onerror = () => {
-      console.warn("[PDF.js] Lib locale introuvable, fallback CDN");
-      const s2 = document.createElement("script");
-      s2.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-      s2.onload = resolve;
-      s2.onerror = () => reject(new Error("Impossible de charger pdf.js"));
-      document.head.appendChild(s2);
-    };
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
     s.onload = resolve;
+    s.onerror = () => reject(new Error("Impossible de charger pdf.js"));
     document.head.appendChild(s);
   });
-  // Worker : même logique local → CDN
-  const workerLocal = "./libs/pdfjs/pdf.worker.min.js";
-  const workerCDN = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-  window.pdfjsLib.GlobalWorkerOptions.workerSrc = workerLocal;
-  // Note: si le worker local échoue, PDF.js bascule en mode fake worker
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 }
 
 // 3. Extraction de texte dans une zone précise (Bounding Box)
@@ -133,7 +123,6 @@ async function detectDocType(page) {
   }
   // "PROCEDURE D'EXECUTION" mais PAS la phrase standard du BT
   if (up.includes("PROCEDURE") && !up.includes("LA PROCEDURE D EXECUTION")) {
-    // Vérifier qu'il y a un vrai titre de procédure, pas juste une mention
     if (up.includes("PROCEDURE D EXECUTION") || up.includes("CONSIGNE DE SECURITE") || up.includes("FICHE DE MANOEUVRE")) {
       return "PROC";
     }
@@ -149,7 +138,6 @@ async function detectDocType(page) {
       up.includes("PLAN DE RECOLEMENT") || up.includes("RECOLLEMENT")) {
     return "PLAN";
   }
-  // "PLAN" seul : seulement si c'est clairement un document plan (pas le mot isolé dans un formulaire)
   if (/\bPLAN\s+(DE|DU|D)\s+/i.test(fullText) && !up.includes("PLANS MINUTES") && !up.includes("DOCUMENTS SATELLITES")) {
     return "PLAN";
   }
@@ -177,8 +165,7 @@ async function detectDocType(page) {
         imageCount++;
       }
     }
-    // Seulement si la page a 3+ images (pas juste les logos GRDF)
-    // ET peu de texte (une page photo a peu de texte, un BT en a beaucoup)
+    // Seulement si la page a 3+ images ET peu de texte
     if (imageCount >= 3 && fullText.length < 200) {
       return "PHOTO";
     }
