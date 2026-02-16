@@ -1,5 +1,6 @@
-/* js/ui/brief.js — DEMAT-BT v11.0.0 — 15/02/2026
+/* js/ui/brief.js — DEMAT-BT v11.0.0 — 16/02/2026
    Vue Brief (optimisée Samsung Flip 55") — utilise les composants partagés
+   Mise à jour : Intégration de la détection précise des types de documents
 */
 
 function renderBrief(filtered) {
@@ -29,7 +30,7 @@ function renderBrief(filtered) {
     const card = document.createElement("div");
     card.className = "card briefCard";
 
-    // Titre : ID + badge catégorie + PTC/PTD
+    // Titre : ID + badge catégorie métier + PTC/PTD
     const titleDiv = document.createElement("div");
     titleDiv.className = "briefCard__title";
 
@@ -39,9 +40,11 @@ function renderBrief(filtered) {
     idSpan.textContent = bt.id;
 
     titleDiv.appendChild(idSpan);
+    
+    // Ajout de la pastille métier (IS, DEP, etc.)
     titleDiv.appendChild(createCategoryBadge(bt, "md"));
 
-    // Badges PTC/PTD dans le titre
+    // Affichage des badges PTC/PTD du technicien concerné
     if (bt.team) {
       bt.team.forEach(member => {
         const tech = mapTechByNni(member.nni);
@@ -51,29 +54,23 @@ function renderBrief(filtered) {
       });
     }
 
-    // Contenu
+    // Contenu de la carte
     const subDiv = document.createElement("div");
     subDiv.className = "briefSub";
 
-    // Infos principales
+    // Métadonnées principales (Date, Objet, Client, Adresse)
+    // Utilisation de createBTMeta pour la cohérence visuelle
     const mainInfo = document.createElement("div");
     mainInfo.className = "briefSub__main";
-    const duree = formatDuree(bt.duree);
-    mainInfo.innerHTML = `
-      <div>📋 ${bt.objet || "—"}</div>
-      <div>📅 ${bt.datePrevue || "—"}</div>
-      ${duree ? `<div>⏱️ ${duree}</div>` : ""}
-      <div>👤 ${bt.client || "—"}</div>
-      <div>📍 ${bt.localisation || "—"}</div>
-      ${bt.atNum ? `<div>🧾 ${bt.atNum}</div>` : ""}
-    `;
+    mainInfo.appendChild(createBTMeta(bt));
     subDiv.appendChild(mainInfo);
 
-    // Analyse des risques + observations
+    // Analyse des risques + observations (blocs d'alerte Jaune/Bleu)
     const blocks = createInfoBlocks(bt);
     if (blocks) subDiv.appendChild(blocks);
 
-    // Boutons documents
+    // Boutons de documents (Utilisent les classes .doc-btn--type pour la précision visuelle)
+    // C'est ici que le bouton FOR-113 apparaîtra avec son style spécifique
     const docsDiv = createDocButtons(bt, { className: "briefDocs" });
 
     card.appendChild(titleDiv);
