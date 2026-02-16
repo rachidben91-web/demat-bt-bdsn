@@ -1,13 +1,18 @@
-/* js/export.js — DEMAT-BT v11.0.0 — 16/02/2026
+/* js/export.js — DEMAT-BT v11.1.0 — 16/02/2026
    Génération des exports PDF (Unitaire ou Journée complète)
-   Assemble les pages extraites (BT + Pièces jointes) en un fichier unique.
+   
+   CORRECTIFS v11.1.0 :
+   - Respect des dimensions ORIGINALES de chaque page PDF (A3, A4, paysage, portrait)
+   - Les plans A3 paysage sont exportés en A3 paysage (plus écrasés en A4 portrait)
+   - Les photos portrait restent en portrait avec leur ratio d'aspect
+   - Qualité d'image adaptative : scale 2.0 pour les pages normales, 1.5 pour les très grandes
+   - Header/tatouage ajusté selon l'orientation de la page
 */
 
 // Chargeur automatique de la librairie jsPDF si elle est manquante
 async function ensureJsPDF() {
   if (window.jspdf) return window.jspdf;
-  
-  // Injection dynamique du script CDN
+
   await new Promise((resolve, reject) => {
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
@@ -15,19 +20,72 @@ async function ensureJsPDF() {
     script.onerror = () => reject(new Error("Impossible de charger la librairie jsPDF."));
     document.head.appendChild(script);
   });
-  
+
   return window.jspdf;
 }
 
 /**
- * EXPORT UNITAIRE (Relié au bouton "Exporter" de la Modal et du BT)
- * Nommé exportBTPDF pour correspondre à l'appel dans main.js et modal.js
+ * Récupère les dimensions et l'orientation d'une page du PDF source.
+ * Retourne { widthPt, heightPt, widthMm, heightMm, orientation, format }
+ */
+async function getPageDimensions(pageNum) {
+  const page = await state.pdf.getPage(pageNum);
+  const viewport = page.getViewport({ scale: 1.0 }); // échelle 1:1 = points PDF natifs
+
+  const widthPt = viewport.width;
+  const heightPt = viewport.height;
+
+  // Conversion points → mm (1 point = 0.3528 mm)
+  const widthMm = widthPt * 0.3528;
+  const heightMm = heightPt * 0.3528;
+
+  const orientation = widthMm > heightMm ? "l" : "p"; // "l" = landscape, "p" = portrait
+
+  // Détection du format standard le plus proche
+  let format = [widthMm, heightMm];
+  const isA4 = (Math.abs(widthMm - 210) < 5 && Math.abs(heightMm - 297) < 5) ||
+               (Math.abs(widthMm - 297) < 5 && Math.abs(heightMm - 210) < 5);
+  const isA3 = (Math.abs(widthMm - 297) < 5 && Math.abs(heightMm - 420) < 5) ||
+               (Math.abs(widthMm - 420) < 5 && Math.abs(heightMm - 297) < 5);
+
+  if (isA4) format = "a4";
+  else if (isA3) format = "a3";
+  // sinon format = dimensions exactes en mm [w, h]
+
+  return { widthPt, heightPt, widthMm, heightMm, orientation, format };
+}
+
+/**
+ * Convertit une page du PDF source en image Data URL.
+ * Adapte le scale selon la taille de la page pour un bon compromis qualité/poids.
+ */
+async function renderPageToDataURL(pageNum) {
+  const page = await state.pdf.getPage(pageNum);
+  const baseViewport = page.getViewport({ scale: 1.0 });
+
+  // Scale adaptatif : 2.0 pour A4, 1.5 pour A3+, 1.0 pour très grand
+  const maxDim = Math.max(baseViewport.width, baseViewport.height);
+  let scale = 2.0;
+  if (maxDim > 1200) scale = 1.5;  // Pages A3
+  if (maxDim > 1800) scale = 1.0;  // Pages très grandes
+
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement("canvas");
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+
+  const ctx = canvas.getContext("2d");
+  await page.render({ canvasContext: ctx, viewport }).promise;
+
+  return canvas.toDataURL("image/jpeg", 0.85);
+}
+
+/**
+ * EXPORT UNITAIRE
  */
 async function exportBTPDF(btArg) {
-  // Si appelé depuis un bouton click, btArg est un Event, donc on prend le BT courant de la modal
-  // Sinon, c'est l'objet BT passé directement
   const bt = (btArg && btArg.id) ? btArg : state.modal.currentBT;
-  
+
   if (!bt) {
     alert("Aucun BT sélectionné pour l'export.");
     return;
@@ -39,9 +97,18 @@ async function exportBTPDF(btArg) {
     setProgress(0, `Génération ${docName}...`);
 
     const jspdfLib = await ensureJsPDF();
-    const pdf = new jspdfLib.jsPDF({ orientation: "p", unit: "mm", format: "a4" });
 
-    await addBTToPDF(pdf, bt, true); // true = c'est la première page du fichier
+    // Récupérer les dimensions de la PREMIÈRE page pour initialiser le PDF
+    const sortedDocs = [...bt.docs].sort((a, b) => a.page - b.page);
+    const firstDims = await getPageDimensions(sortedDocs[0].page);
+
+    const pdf = new jspdfLib.jsPDF({
+      orientation: firstDims.orientation,
+      unit: "mm",
+      format: firstDims.format
+    });
+
+    await addBTToPDF(pdf, bt, true);
 
     pdf.save(docName);
     setProgress(100, `Export OK : ${docName}`);
@@ -54,11 +121,9 @@ async function exportBTPDF(btArg) {
 }
 
 /**
- * EXPORT JOURNÉE (Relié au bouton "Exporter PDF du jour" dans le header)
- * Nommé exportDayPDF pour correspondre à l'appel dans main.js
+ * EXPORT JOURNÉE
  */
 async function exportDayPDF() {
-  // On récupère la liste filtrée actuelle via la fonction globale (si dispo) ou le state
   const btList = (typeof filterBTs === 'function') ? filterBTs() : state.bts;
 
   if (!btList || btList.length === 0) {
@@ -72,10 +137,19 @@ async function exportDayPDF() {
   try {
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
     const docName = `Export_Journee_${dateStr}.pdf`;
-    
+
     const jspdfLib = await ensureJsPDF();
-    const pdf = new jspdfLib.jsPDF({ orientation: "p", unit: "mm", format: "a4" });
-    
+
+    // Initialiser avec les dimensions de la première page du premier BT
+    const firstBT = btList.find(bt => bt.docs && bt.docs.length > 0);
+    const firstDims = firstBT ? await getPageDimensions(firstBT.docs[0].page) : { orientation: "p", format: "a4" };
+
+    const pdf = new jspdfLib.jsPDF({
+      orientation: firstDims.orientation,
+      unit: "mm",
+      format: firstDims.format
+    });
+
     let isFirstPageOfFile = true;
 
     for (let i = 0; i < btList.length; i++) {
@@ -83,18 +157,15 @@ async function exportDayPDF() {
       const pct = Math.round((i / btList.length) * 100);
       setProgress(pct, `Fusion BT ${bt.id} (${i + 1}/${btList.length})...`);
 
-      // Ajoute toutes les pages de ce BT
-      // Si le BT a des documents, il va générer des pages.
-      // On passe isFirstPageOfFile pour savoir si on doit faire addPage() avant ou pas.
       if (bt.docs && bt.docs.length > 0) {
         await addBTToPDF(pdf, bt, isFirstPageOfFile);
-        isFirstPageOfFile = false; // Dès qu'une page est écrite, ce n'est plus la première
+        isFirstPageOfFile = false;
       }
     }
 
     setProgress(100, "Finalisation du fichier...");
     pdf.save(docName);
-    
+
     setProgress(100, `Terminé : ${btList.length} BT exportés.`);
     setTimeout(() => setProgress(0, "Prêt"), 3000);
   } catch (e) {
@@ -105,66 +176,71 @@ async function exportDayPDF() {
 }
 
 /**
- * Fonction interne : Ajoute toutes les pages d'un BT dans l'instance jsPDF en cours.
+ * Fonction interne : Ajoute toutes les pages d'un BT dans l'instance jsPDF.
+ * V11.1.0 : Chaque page est ajoutée avec ses dimensions ORIGINALES.
  */
 async function addBTToPDF(pdfDoc, bt, isFirstDocOfPdf) {
-  // Tri des documents par ordre de page
   const sortedDocs = [...bt.docs].sort((a, b) => a.page - b.page);
 
   for (let i = 0; i < sortedDocs.length; i++) {
     const doc = sortedDocs[i];
-    
-    // Nouvelle page PDF (sauf si c'est la toute première du fichier entier)
+
+    // Récupérer les dimensions originales de cette page
+    const dims = await getPageDimensions(doc.page);
+
+    // Ajouter une nouvelle page avec les bonnes dimensions
+    // (sauf si c'est la toute première page du fichier entier)
     if (!isFirstDocOfPdf || i > 0) {
-      pdfDoc.addPage();
+      pdfDoc.addPage(dims.format, dims.orientation);
+    } else if (isFirstDocOfPdf && i === 0) {
+      // Première page : vérifier si le format initial correspond
+      // Si non, on utilise deletePage + addPage pour corriger
+      const currentW = pdfDoc.internal.pageSize.getWidth();
+      const currentH = pdfDoc.internal.pageSize.getHeight();
+      const needW = dims.orientation === "l" ? Math.max(dims.widthMm, dims.heightMm) : Math.min(dims.widthMm, dims.heightMm);
+      const needH = dims.orientation === "l" ? Math.min(dims.widthMm, dims.heightMm) : Math.max(dims.widthMm, dims.heightMm);
+
+      if (Math.abs(currentW - needW) > 5 || Math.abs(currentH - needH) > 5) {
+        // Le format initial ne correspond pas, on reconfigure
+        // jsPDF ne permet pas de changer la première page facilement,
+        // mais on peut la redimensionner via les propriétés internes
+        pdfDoc.internal.pageSize.setWidth(needW);
+        pdfDoc.internal.pageSize.setHeight(needH);
+      }
     }
 
     // 1. Capture de la page PDF originale en image haute qualité
     const imgData = await renderPageToDataURL(doc.page);
 
-    // 2. Insertion image (A4 standard)
-    const pageWidth = 210;
-    const pageHeight = 297;
+    // 2. Insertion image — RESPECT des dimensions originales
+    const pageWidth = pdfDoc.internal.pageSize.getWidth();
+    const pageHeight = pdfDoc.internal.pageSize.getHeight();
     pdfDoc.addImage(imgData, "JPEG", 0, 0, pageWidth, pageHeight);
 
-    // 3. Ajout du tatouage discret (Numéro BT + Type document)
-    addPageHeader(pdfDoc, bt, doc);
+    // 3. Ajout du tatouage discret (adapté à l'orientation)
+    addPageHeader(pdfDoc, bt, doc, pageWidth);
   }
 }
 
 /**
  * Ajoute un petit en-tête texte sur la page PDF générée.
+ * V11.1.0 : Adapte la position au format de la page.
  */
-function addPageHeader(pdfDoc, bt, doc) {
-  const config = (typeof DOC_TYPES_CONFIG !== 'undefined') 
+function addPageHeader(pdfDoc, bt, doc, pageWidth) {
+  const config = (typeof DOC_TYPES_CONFIG !== 'undefined')
     ? (DOC_TYPES_CONFIG[doc.type] || DOC_TYPES_CONFIG.DOC)
     : { label: doc.type, color: "#000" };
-  
+
   pdfDoc.setFontSize(9);
   pdfDoc.setTextColor(80); // Gris
-  
+
   // En haut à gauche : ID du BT
   pdfDoc.text(`${bt.id}`, 10, 6);
-  
-  // En haut à droite : Type de pièce (PLAN, PHOTO, etc.)
-  pdfDoc.setTextColor(0); 
+
+  // En haut à droite : Type de pièce — position adaptée à la largeur de page
+  const rightMargin = (pageWidth || 210) - 10;
+  pdfDoc.setTextColor(0);
   pdfDoc.setFont("helvetica", "bold");
-  pdfDoc.text(`${config.label}`, 200, 6, { align: "right" });
-}
-
-/**
- * Convertit une page du PDF source en image pour l'intégration
- */
-async function renderPageToDataURL(pageNum) {
-  const page = await state.pdf.getPage(pageNum);
-  const viewport = page.getViewport({ scale: 1.5 }); // Qualité standard (1.5x)
-
-  const canvas = document.createElement("canvas");
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  
-  const ctx = canvas.getContext("2d");
-  await page.render({ canvasContext: ctx, viewport }).promise;
-
-  return canvas.toDataURL("image/jpeg", 0.8);
+  pdfDoc.text(`${config.label}`, rightMargin, 6, { align: "right" });
+  pdfDoc.setFont("helvetica", "normal"); // Reset
 }
