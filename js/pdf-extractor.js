@@ -1,16 +1,12 @@
-/* js/pdf-extractor.js — DEMAT-BT v11.1.0 — 16/02/2026
+/* js/pdf-extractor.js — DEMAT-BT v11.1.1 — 16/02/2026
    Extraction PDF : détection intelligente des BT et de leurs pièces jointes
    
-   CORRECTIFS v11.1.0 :
-   - Détection des pièces jointes via FULL TEXT de la page (plus seulement le header)
-   - Ordre de priorité des tests revu pour éviter les faux positifs
-   - PROC : détecté par "Procédure d'Exécution" (mot exact, pas juste "EXECUTION")
-   - AT : détecté par "Fiche AT" ou "N° d'AT" (pas juste "AUTORISATION")
-   - PLAN : détecté par "Format: A3" ou "Echelle:" ou "Lambert" + présence de "GRDF"
-   - PHOTO : uniquement si page est >80% image et <50 caractères de texte significatif
-   - STREET : détecté par "Google Street View" ou "Google Maps"
-   - Ajout type "REPAIR" pour les fiches de réparation (Edition Réparation)
-   - FOR-113 : inchangé
+   CORRECTIFS v11.1.1 :
+   - FIX CRITIQUE : stripAccents() pour fiabiliser les comparaisons texte
+     ("PROCÉDURE" → "PROCEDURE", "ÉCHELLE" → "ECHELLE", etc.)
+   - Détection PROC, AT, PLAN, PHOTO, STREET par full-page text scan
+   - Seuil PHOTO relevé à 150 chars pour tolérer watermarks/overlays
+   - Logs console détaillés pour debug
 */
 
 let ZONES = null;
@@ -48,6 +44,19 @@ async function ensurePdfJs() {
     "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 }
 
+// ═══════════════════════════════════════════════════════════
+// UTILITAIRE : Suppression des accents pour comparaison fiable
+// "Procédure d'Exécution" → "PROCEDURE D'EXECUTION"
+// ═══════════════════════════════════════════════════════════
+function stripAccents(str) {
+  return (str || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+// Combine uppercase + strip accents pour comparaison insensible
+function cleanUpper(str) {
+  return stripAccents((str || "").toUpperCase());
+}
+
 // 3. Extraction de texte dans une zone précise (Bounding Box)
 async function extractTextInBBox(page, bbox) {
   if (!bbox) return "";
@@ -69,7 +78,7 @@ async function extractTextInBBox(page, bbox) {
   return norm(picked.map(p => p.str).join(" "));
 }
 
-// 4. Extraction du texte COMPLET d'une page (pour classification fiable)
+// 4. Extraction du texte COMPLET d'une page (pour classification)
 async function extractFullPageText(page) {
   const tc = await page.getTextContent();
   const items = tc.items || [];
@@ -85,120 +94,135 @@ async function extractFullPageText(page) {
   return picked.map(p => p.str).join(" ");
 }
 
-// 5. Détection intelligente du type de document — V11.1.0 REFONTE COMPLÈTE
-//    Utilise le texte COMPLET de la page au lieu du seul header
+// 5. Comptage des objets images dans une page PDF
+async function countPageImages(page) {
+  try {
+    const ops = await page.getOperatorList();
+    return ops.fnArray.filter(fn =>
+      fn === window.pdfjsLib.OPS.paintImageXObject ||
+      fn === window.pdfjsLib.OPS.paintJpegXObject
+    ).length;
+  } catch (e) {
+    console.warn("[DEMAT-BT] Erreur comptage images:", e);
+    return 0;
+  }
+}
+
+// 6. Détection intelligente du type de document — V11.1.1
 async function detectDocType(page) {
-  // Récupère tout le texte de la page
   const rawText = await extractFullPageText(page);
-  const up = safeUpper(rawText);
-  const textLen = rawText.replace(/\s+/g, "").length; // longueur sans espaces
+  // CRUCIAL : cleanUpper supprime les accents AVANT comparaison
+  const up = cleanUpper(rawText);
+  const textLen = rawText.replace(/\s+/g, "").length;
 
-  // --- Log pour debug (à retirer en production si besoin) ---
-  console.log(`[DEMAT-BT] Classification page — ${textLen} chars — extrait: "${up.substring(0, 200)}..."`);
+  console.log(`[DEMAT-BT] Classification — ${textLen} chars`);
+  console.log(`[DEMAT-BT]   Extrait: "${up.substring(0, 300)}"`);
 
   // ═══════════════════════════════════════════════════════════
-  // PRIORITE 1 : Détection par mots-clés TRÈS SPÉCIFIQUES
+  // PRIORITE 1 : PROC — Procédure d'Exécution
+  // Après stripAccents : "PROCEDURE D'EXECUTION" (sans accents)
   // ═══════════════════════════════════════════════════════════
-
-  // PROC — Procédure d'Exécution (titre exact, PAS juste "EXECUTION")
   if (up.includes("PROCEDURE D'EXECUTION") || up.includes("PROCEDURE D EXECUTION") ||
-      /PROC[EÉ]DURE\s+D.?EX[EÉ]CUTION/i.test(up)) {
-    console.log("  → PROC (Procédure d'Exécution détectée)");
+      up.includes("PROCEDURE D'EXECUTION") ||
+      /PROCEDURE\s+D.?EXECUTION/.test(up) ||
+      (up.includes("LISTE DES INTERVENTIONS") && up.includes("OPERATION") && up.includes("ACTEURS"))) {
+    console.log("  → PROC ✅");
     return "PROC";
   }
 
-  // FOR-113 — Fiche de préparation et de suivi
+  // ═══════════════════════════════════════════════════════════
+  // PRIORITE 2 : FOR-113 — Fiche de préparation et de suivi
+  // ═══════════════════════════════════════════════════════════
   if (up.includes("FOR-113") || up.includes("FOR 113") ||
-      up.includes("FICHE DE PREPARATION ET DE SUIVI") ||
       up.includes("PREPARATION ET DE SUIVI")) {
-    console.log("  → FOR113 (Fiche FOR-113 détectée)");
+    console.log("  → FOR113 ✅");
     return "FOR113";
   }
 
-  // AT — Fiche AT / Autorisation de Travail (avec numéro AT spécifique)
-  if (up.includes("FICHE AT") || 
-      (up.includes("AUTORISATION DE TRAVAIL") && !up.includes("BON DE TRAVAIL")) ||
-      /N[°O]\s*D.?AT\s*:\s*AT\d{5,}/i.test(up)) {
-    console.log("  → AT (Fiche AT / Autorisation de Travail détectée)");
+  // ═══════════════════════════════════════════════════════════
+  // PRIORITE 3 : AT — Fiche AT / Autorisation de Travail
+  // Critères : "FICHE AT" exact, ou "N° D'AT" avec numéro
+  // EXCLURE les pages BT (qui contiennent "AT N°" en pied de page)
+  // ═══════════════════════════════════════════════════════════
+  if (up.includes("FICHE AT") ||
+      (up.includes("N° D'AT") || up.includes("NO D'AT") || up.includes("N D'AT")) ||
+      (up.includes("AUTORISATION DE TRAVAIL") && !up.includes("BON DE TRAVAIL") && up.includes("DELIVRANCE"))) {
+    console.log("  → AT ✅");
     return "AT";
   }
 
-  // STREET VIEW — Google Maps / Street View
+  // ═══════════════════════════════════════════════════════════
+  // PRIORITE 4 : STREET VIEW — Google Maps / Street View
+  // ═══════════════════════════════════════════════════════════
   if (up.includes("GOOGLE STREET VIEW") || up.includes("STREET VIEW") ||
       (up.includes("GOOGLE MAPS") && !up.includes("BON DE TRAVAIL"))) {
-    console.log("  → STREET (Vue Google Street View détectée)");
+    console.log("  → STREET ✅");
     return "STREET";
   }
 
-  // PLAN — Cartographie GRDF (Format A3, Echelle, Lambert, Code INSEE)
-  if ((up.includes("FORMAT") && up.includes("PAYSAGE")) ||
+  // ═══════════════════════════════════════════════════════════
+  // PRIORITE 5 : PLAN — Cartographie GRDF
+  // Critères : "Format: A3" + "Paysage", ou "Echelle:" + "GRDF",
+  //            ou "Lambert" + "Commune", ou "Code INSEE"
+  // ═══════════════════════════════════════════════════════════
+  if ((up.includes("FORMAT") && up.includes("PAYSAGE") && (up.includes("A3") || up.includes("A2") || up.includes("A1"))) ||
       (up.includes("ECHELLE") && up.includes("GRDF")) ||
       (up.includes("LAMBERT") && up.includes("COMMUNE")) ||
-      (up.includes("CODE INSEE") && up.includes("GRDF")) ||
-      (up.includes("CARTOGRAPHIE") || up.includes("RECOLLEMENT"))) {
-    console.log("  → PLAN (Cartographie/Plan GRDF détecté)");
+      (up.includes("CODE INSEE") && (up.includes("GRDF") || up.includes("COMMUNE"))) ||
+      up.includes("RECOLLEMENT") ||
+      up.includes("CARTOGRAPHIE")) {
+    console.log("  → PLAN ✅");
     return "PLAN";
   }
 
-  // REPAIR — Fiche de réparation (Edition Réparation / Modification de Réparation)
-  if (up.includes("EDITION REPARATION") || up.includes("MODIFICATION DE REPARATION") ||
-      /RP\d{8,14}/i.test(up) && (up.includes("REPARATION") || up.includes("SURVEILLANCE"))) {
-    console.log("  → DOC (Fiche de réparation détectée)");
-    return "DOC"; // Gardé en DOC pour l'instant, mais bien identifié
-  }
-
   // ═══════════════════════════════════════════════════════════
-  // PRIORITE 2 : Détection par ratio texte/images
+  // PRIORITE 6 : PHOTO — Page quasi-exclusivement image
+  // Seuil : < 150 caractères de texte ET au moins 1 image lourde
+  // (Les vrais photos terrain ont très peu de texte overlay)
   // ═══════════════════════════════════════════════════════════
-
-  // PHOTO — Page avec très peu de texte ET présence d'images lourdes
-  // Les vrais photos terrain ont typiquement <50 caractères de texte significatif
-  if (textLen < 80) {
-    try {
-      const ops = await page.getOperatorList();
-      const imageOps = ops.fnArray.filter(fn =>
-        fn === window.pdfjsLib.OPS.paintImageXObject ||
-        fn === window.pdfjsLib.OPS.paintJpegXObject
-      ).length;
-      
-      if (imageOps > 0) {
-        console.log(`  → PHOTO (${textLen} chars texte, ${imageOps} images détectées)`);
-        return "PHOTO";
-      }
-    } catch (e) {
-      console.warn("  ⚠ Erreur lors de l'analyse des opérations PDF:", e);
+  if (textLen < 150) {
+    const imageCount = await countPageImages(page);
+    if (imageCount > 0) {
+      console.log(`  → PHOTO ✅ (${textLen} chars, ${imageCount} images)`);
+      return "PHOTO";
     }
   }
 
   // ═══════════════════════════════════════════════════════════
-  // PRIORITE 3 : Détection secondaire (mots-clés plus larges)
+  // PRIORITE 7 : Détection secondaire élargie
   // ═══════════════════════════════════════════════════════════
 
-  // PLAN secondaire — Schéma, Plan de situation (mais PAS "PLANS MINUTES" qui est sur chaque BT)
+  // PLAN secondaire
   if ((up.includes("PLAN DE SITUATION") || up.includes("SCHEMA DE PRINCIPE")) &&
       !up.includes("BON DE TRAVAIL") && !up.includes("PLANS MINUTES")) {
-    console.log("  → PLAN (Plan de situation secondaire)");
+    console.log("  → PLAN ✅ (secondaire)");
     return "PLAN";
   }
 
-  // MODE OPERATOIRE — mais pas si c'est un BT (qui contient "Méthode / Ordonnancement")
+  // PROC secondaire — mode opératoire
   if ((up.includes("MODE OPERATOIRE") || up.includes("CONSIGNE OPERATOIRE")) &&
-      !up.includes("BON DE TRAVAIL") && !up.includes("METHODE / ORDONNANCEMENT")) {
-    console.log("  → PROC (Mode opératoire secondaire)");
+      !up.includes("BON DE TRAVAIL") && !up.includes("METHODE / ORDONNANCEMENT") &&
+      !up.includes("METHODE/ORDONNANCEMENT")) {
+    console.log("  → PROC ✅ (secondaire)");
     return "PROC";
   }
 
   // ═══════════════════════════════════════════════════════════
   // DEFAUT : DOC générique
   // ═══════════════════════════════════════════════════════════
-  console.log(`  → DOC (aucune signature spécifique trouvée, ${textLen} chars)`);
+  console.log(`  → DOC (défaut, ${textLen} chars, aucune signature trouvée)`);
   return "DOC";
 }
 
-// --- FONCTIONS LEGACY conservées pour compatibilité (mais plus utilisées par extractAll) ---
+// --- FONCTIONS LEGACY (conservées pour compatibilité) ---
 async function extractHeaderArea(page) {
   const headerBBox = { x0: 0, y0: 700, x1: 600, y1: 842 };
   return await extractTextInBBox(page, headerBBox);
+}
+
+async function detectDocTypeFromHeader(page, headerText) {
+  // Redirige vers la nouvelle fonction complète
+  return await detectDocType(page);
 }
 
 // Utilitaires de détection de numéros
@@ -218,7 +242,7 @@ function parseTeamFromRealisation(text) {
   return out;
 }
 
-// 6. Boucle principale d'extraction — V11.1.0
+// 7. Boucle principale d'extraction
 async function extractAll() {
   if (!state.pdf) throw new Error("PDF non chargé.");
   if (!ZONES) throw new Error("Zones non chargées.");
@@ -257,11 +281,9 @@ async function extractAll() {
         badges: []
       };
 
-      // Détection des pastilles métier
       currentBT.badges = detectBadgesForBT(currentBT);
       state.bts.push(currentBT);
 
-      // Mise à jour des compteurs techniciens
       for (const m of team) {
         const tech = mapTechByNni(m.nni);
         if (!tech) continue;
@@ -269,13 +291,11 @@ async function extractAll() {
         state.countsByTechId.set(key, (state.countsByTechId.get(key) || 0) + 1);
       }
     }
-    // Si ce n'est pas une page BT, c'est une pièce jointe du BT précédent
+    // Pièce jointe du BT précédent
     else if (currentBT) {
-      // V11.1.0 : Utilise la nouvelle détection full-page au lieu du seul header
+      console.log(`[DEMAT-BT] Page ${p} : pièce jointe de ${currentBT.id}`);
       const type = await detectDocType(page);
       currentBT.docs.push({ page: p, type });
-
-      // Recalculer les badges si le document apporte une info supplémentaire
       currentBT.badges = detectBadgesForBT(currentBT);
     }
   }
