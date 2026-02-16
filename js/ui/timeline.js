@@ -1,16 +1,18 @@
-/* js/ui/timeline.js — DEMAT-BT v11.0.2 — 16/02/2026
+/* js/ui/timeline.js — DEMAT-BT v11.1.0 — 16/02/2026
    Vue "Brief / Activités" (basée SUR LES PASTILLES)
    - Catégories (IS, DEP, etc.)
    - Sous-lignes (IS J1/J2/J3, DEP J1/J2/J3)
    - Chips techniciens à droite
+   
+   v11.1.0 : Réorganisation de l'ordre des catégories + ajout RSF/MAGASIN
 */
 
 /* global state, mapTechByNni, techKey */
 
 (function () {
-  // -------------------------
+  // ------------------------
   // Styles (injectés 1 seule fois)
-  // -------------------------
+  // ------------------------
   function ensureStylesOnce() {
     if (document.getElementById("briefTimelineStyles")) return;
 
@@ -151,9 +153,9 @@
     document.head.appendChild(style);
   }
 
-  // -------------------------
+  // ------------------------
   // Helpers tech filter (réutilise ton select sidebar)
-  // -------------------------
+  // ------------------------
   function applyTechFilter(techId) {
     const sel = document.getElementById("techSelect");
     if (!sel) return;
@@ -179,9 +181,9 @@
     return out;
   }
 
-  // -------------------------
+  // ------------------------
   // BADGES : on se base sur bt.badges (pastilles)
-  // -------------------------
+  // ------------------------
 
   // Choix IMPORTANT : on classe un BT selon SA pastille principale
   // (la 1ère du tableau bt.badges). Si tu veux autre chose, on ajuste.
@@ -204,11 +206,16 @@
     // FUITE / SURV_FUITE / SUIV_FUITE
     if (id.includes("FUITE") || id.includes("SURV_FUITE") || id.includes("SUIV_FUITE") || id.includes("URGEN")) return "FUITE";
 
-    // TRAVAUX (si tu as une pastille TRAVAUX)
+    // TRAVAUX
     if (id.includes("TRAVAUX") || id.includes("CHANTIER") || id.includes("RACC")) return "TRAVAUX";
+    
+    // RSF / SAP
+    if (id.includes("RSF") || id.includes("SAP")) return "RSF_SAP";
+    
+    // MAGASIN
+    if (id.includes("MAGASIN")) return "MAGASIN";
 
-    // ADMIN / BRIEF / REUNION / EAP etc : on laisse tel quel si tu as déjà les pastilles
-    // sinon tu peux regrouper ici.
+    // ADMIN / BRIEF / REUNION / EAP etc.
     return id;
   }
 
@@ -227,11 +234,13 @@
     FUITE: "#ef4444",    // rouge
     MAINT: "#3b82f6",    // bleu
     TRAVAUX: "#10b981",  // vert
+    RSF_SAP: "#eab308",  // jaune
+    MAGASIN: "#a855f7",  // violet
     DEFAULT: "#64748b"   // gris
   };
 
   // Ordre brief (A + E)
-  const GROUP_ORDER = ["FUITE", "MAINT", "TRAVAUX", "IS", "DEP"];
+  const GROUP_ORDER = ["IS", "DEP", "FUITE", "TRAVAUX", "RSF_SAP", "MAGASIN"];
 
   // Sous-ordre à l’intérieur des groupes IS/DEP
   const SUB_ORDER = {
@@ -239,9 +248,9 @@
     DEP: ["DEP_J1", "DEP_J2", "DEP_J3"]
   };
 
-  // -------------------------
+  // ------------------------
   // Render
-  // -------------------------
+  // ------------------------
   function renderBriefActivities(filteredBTs) {
     ensureStylesOnce();
 
