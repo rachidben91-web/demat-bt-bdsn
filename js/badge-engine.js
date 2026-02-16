@@ -1,6 +1,8 @@
-/* js/badge-engine.js — DEMAT-BT v11.0.0 — 16/02/2026
+/* js/badge-engine.js — DEMAT-BT v11.1.0 — 16/02/2026
    Moteur de classification des pastilles métier (badges-rules.json)
-   Mise à jour : Optimisation du tri par priorité et gestion des exclusions strictes
+   FIX v11.1: Suppression de bt.designation du texte de détection (faux positifs TRAVAUX)
+              + ajout de bt.observations pour meilleure détection
+              + logging détaillé pour debug
 */
 
 let BADGE_RULES = null;
@@ -39,11 +41,21 @@ function normalizeBadgeKey(k = "") {
 }
 
 /**
- * Prépare le texte de recherche à partir de l'objet et de la désignation du BT.
+ * Prépare le texte de recherche à partir des champs fiables du BT.
+ * 
+ * ⚠️ FIX v11.1 : On n'utilise PAS bt.designation !
+ * La zone DESIGNATION (x:730-1186, y:533-603) capture du texte parasite 
+ * du côté droit du formulaire BT (ex: "CHEF DE TRAVAUX", codes EOTP...)
+ * qui déclenchait de faux positifs sur la pastille TRAVAUX (priorité 700).
+ * 
+ * Sources fiables pour la détection :
+ * - bt.objet : description principale de l'intervention (zone OBJET)
+ * - bt.observations : précisions opérationnelles (zone OBSERVATIONS)
  */
 function buildBTBadgeText(bt) {
-  // On fusionne l'objet et la précision pour maximiser les chances de détection
-  return normalizeBadgeText([bt.objet, bt.precisionObjet, bt.designation].filter(Boolean).join(" | "));
+  return normalizeBadgeText(
+    [bt.objet, bt.observations].filter(Boolean).join(" | ")
+  );
 }
 
 /**
@@ -84,7 +96,7 @@ function detectBadgesForBT(bt) {
 
   // 2. Gestion de l'affichage UI selon les notes du JSON
   const stackOrder = BADGE_RULES?.notes?.ui?.display?.stackOrder || [];
-  const max = BADGE_RULES?.notes?.ui?.display?.maxBadgesPerBT || 1; // Limite à 1 comme demandé
+  const max = BADGE_RULES?.notes?.ui?.display?.maxBadgesPerBT || 1;
 
   // On filtre pour ne garder que les badges uniques
   const unique = [...new Set(badges)];
@@ -96,7 +108,14 @@ function detectBadgesForBT(bt) {
     return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
   });
 
-  return unique.slice(0, max);
+  const result = unique.slice(0, max);
+
+  // Debug log pour vérification
+  if (result.length > 0) {
+    console.log(`[BADGES] ${bt.id} → ${result[0]} | texte: "${text.trim().substring(0, 80)}…"`);
+  }
+
+  return result;
 }
 
 /**

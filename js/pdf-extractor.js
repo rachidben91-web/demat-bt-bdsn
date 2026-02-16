@@ -1,5 +1,6 @@
-/* js/pdf-extractor.js — DEMAT-BT v11.0.0 — 16/02/2026
+/* js/pdf-extractor.js — DEMAT-BT v11.1.0 — 16/02/2026
    Extraction PDF : détection intelligente des BT et de leurs pièces jointes (AT, FOR-113, Plans...)
+   FIX v11.1: Détection documents annexes corrigée + suppression faux positifs PLAN/PROC/PHOTO
 */
 
 let ZONES = null;
@@ -28,13 +29,24 @@ async function ensurePdfJs() {
   if (window.pdfjsLib) return;
   await new Promise((resolve, reject) => {
     const s = document.createElement("script");
-    s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    // Tente d'abord les libs locales, fallback CDN
+    s.src = "./libs/pdfjs/pdf.min.js";
+    s.onerror = () => {
+      console.warn("[PDF.js] Lib locale introuvable, fallback CDN");
+      const s2 = document.createElement("script");
+      s2.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+      s2.onload = resolve;
+      s2.onerror = () => reject(new Error("Impossible de charger pdf.js"));
+      document.head.appendChild(s2);
+    };
     s.onload = resolve;
-    s.onerror = () => reject(new Error("Impossible de charger pdf.js"));
     document.head.appendChild(s);
   });
-  window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  // Worker : même logique local → CDN
+  const workerLocal = "./libs/pdfjs/pdf.worker.min.js";
+  const workerCDN = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = workerLocal;
+  // Note: si le worker local échoue, PDF.js bascule en mode fake worker
 }
 
 // 3. Extraction de texte dans une zone précise (Bounding Box)
@@ -58,46 +70,125 @@ async function extractTextInBBox(page, bbox) {
   return norm(picked.map(p => p.str).join(" "));
 }
 
-// 4. Scanner de bandeau large (Nouveauté pour documents annexes)
-async function extractHeaderArea(page) {
-  // Scanne tout le haut de la page sur 150 points de hauteur pour ne rater aucun titre
-  const headerBBox = { x0: 0, y0: 700, x1: 600, y1: 842 }; 
-  return await extractTextInBBox(page, headerBBox);
+// 4. Extraction de texte COMPLET d'une page (pour la détection de type)
+async function extractFullPageText(page) {
+  const tc = await page.getTextContent();
+  const items = tc.items || [];
+  const picked = [];
+  for (const it of items) {
+    const str = (it.str || "").trim();
+    if (str) {
+      const t = it.transform;
+      picked.push({ str, x: t ? t[4] : 0, y: t ? t[5] : 0 });
+    }
+  }
+  picked.sort((a, b) => (b.y - a.y) || (a.x - b.x));
+  return norm(picked.map(p => p.str).join(" "));
 }
 
-// 5. Détection intelligente du type de document
-async function detectDocTypeFromHeader(page, headerText) {
-  const up = safeUpper(headerText);
+// 5. Détection intelligente du type de document (v11.1 — corrigée)
+//    Analyse le texte complet de la page pour une classification fiable
+async function detectDocType(page) {
+  const fullText = await extractFullPageText(page);
+  const up = safeUpper(fullText);
 
-  // AT - Autorisation de Travail
-  if (up.includes("AUTORISATION DE TRAVAIL") || up.includes("AUTORISATION TRAVAIL") || /AT\d{3,}/.test(up)) {
+  // -----------------------------------------------------------
+  // A) Page 2 du BT GRDF (côté "Méthode / Ordonnancement")
+  //    → On la rattache comme "BT" (2ème page du même bon)
+  //    Signature : contient "METHODE" + "ORDONNANCEMENT" + "BON DE TRAVAIL"
+  // -----------------------------------------------------------
+  if (up.includes("METHODE") && up.includes("ORDONNANCEMENT") && up.includes("BON DE TRAVAIL")) {
+    return "BT";
+  }
+
+  // -----------------------------------------------------------
+  // B) Autorisation de Travail (AT)
+  //    Signatures strictes : titre exact ou numéro AT
+  // -----------------------------------------------------------
+  if (/AUTORISATION\s+DE\s+TRAVAIL/i.test(up) && !up.includes("DOCUMENTS SATELLITES")) {
     return "AT";
   }
-  // FOR-113 (Fiche de préparation et de suivi)
-  if (up.includes("FOR-113") || up.includes("FOR 113") || up.includes("PREPARATION ET DE SUIVI")) {
+  if (/\bAT\s*N\s*[°:]\s*\w+/.test(fullText) && up.includes("AUTORISATION")) {
+    return "AT";
+  }
+
+  // -----------------------------------------------------------
+  // C) FOR-113 (Fiche de préparation et de suivi)
+  //    Très spécifique : "FOR-113" ou "FOR 113"
+  // -----------------------------------------------------------
+  if (/FOR[\s-]*113/i.test(up)) {
     return "FOR113";
   }
-  // PROCÉDURES
-  if (up.includes("PROCEDURE") || up.includes("MODE OPERATOIRE") || up.includes("EXECUTION")) {
+  if (up.includes("FICHE DE PREPARATION") && up.includes("SUIVI")) {
+    return "FOR113";
+  }
+
+  // -----------------------------------------------------------
+  // D) Procédure d'exécution / Mode opératoire
+  //    ⚠️ STRICT : on exige "MODE OPERATOIRE" ou "PROCEDURE D'EXECUTION"
+  //    On exclut le texte standard du BT "La procédure d'exécution..."
+  // -----------------------------------------------------------
+  if (up.includes("MODE OPERATOIRE")) {
     return "PROC";
   }
-  // PLANS ET CARTOGRAPHIE
-  if (up.includes("PLAN") || up.includes("SCHEMA") || up.includes("SITUATION") || up.includes("RECOLLEMENT")) {
+  // "PROCEDURE D'EXECUTION" mais PAS la phrase standard du BT
+  if (up.includes("PROCEDURE") && !up.includes("LA PROCEDURE D EXECUTION")) {
+    // Vérifier qu'il y a un vrai titre de procédure, pas juste une mention
+    if (up.includes("PROCEDURE D EXECUTION") || up.includes("CONSIGNE DE SECURITE") || up.includes("FICHE DE MANOEUVRE")) {
+      return "PROC";
+    }
+  }
+
+  // -----------------------------------------------------------
+  // E) Plan de situation / Cartographie
+  //    ⚠️ STRICT : on exige des termes spécifiques aux vrais plans
+  //    Exclut "PLANS MINUTES" et "PLANS" du tableau DOCUMENTS SATELLITES
+  // -----------------------------------------------------------
+  if (up.includes("PLAN DE SITUATION") || up.includes("PLAN DE MASSE") || 
+      up.includes("CARTOGRAPHIE") || up.includes("SCHEMA DE PRINCIPE") ||
+      up.includes("PLAN DE RECOLEMENT") || up.includes("RECOLLEMENT")) {
     return "PLAN";
   }
-  // STREET VIEW
-  if (up.includes("STREET VIEW") || up.includes("GOOGLE") || up.includes("VUE IMMERSIVE")) {
+  // "PLAN" seul : seulement si c'est clairement un document plan (pas le mot isolé dans un formulaire)
+  if (/\bPLAN\s+(DE|DU|D)\s+/i.test(fullText) && !up.includes("PLANS MINUTES") && !up.includes("DOCUMENTS SATELLITES")) {
+    return "PLAN";
+  }
+
+  // -----------------------------------------------------------
+  // F) Google Street View
+  // -----------------------------------------------------------
+  if (up.includes("STREET VIEW") || up.includes("GOOGLE MAPS") || up.includes("VUE IMMERSIVE")) {
     return "STREET";
   }
-  // PHOTOS (Basé sur la détection d'objets images dans le PDF)
+
+  // -----------------------------------------------------------
+  // G) Photos terrain
+  //    ⚠️ STRICT : on vérifie que la page contient BEAUCOUP d'images
+  //    (pas juste un logo ou un en-tête), OU le mot "PHOTO" en titre
+  // -----------------------------------------------------------
+  if (up.includes("PHOTO") && !up.includes("DOCUMENTS SATELLITES") && !up.includes("FICHE D EXPOSITION")) {
+    return "PHOTO";
+  }
   try {
     const ops = await page.getOperatorList();
-    const hasImages = ops.fnArray.some(fn => 
-      fn === window.pdfjsLib.OPS.paintImageXObject || fn === window.pdfjsLib.OPS.paintJpegXObject
-    );
-    if (hasImages || up.includes("PHOTO")) return "PHOTO";
-  } catch(e) {}
+    let imageCount = 0;
+    for (const fn of ops.fnArray) {
+      if (fn === window.pdfjsLib.OPS.paintImageXObject || fn === window.pdfjsLib.OPS.paintJpegXObject) {
+        imageCount++;
+      }
+    }
+    // Seulement si la page a 3+ images (pas juste les logos GRDF)
+    // ET peu de texte (une page photo a peu de texte, un BT en a beaucoup)
+    if (imageCount >= 3 && fullText.length < 200) {
+      return "PHOTO";
+    }
+  } catch(e) {
+    console.warn("[DETECT] Erreur détection images:", e);
+  }
 
+  // -----------------------------------------------------------
+  // H) Défaut : DOC générique
+  // -----------------------------------------------------------
   return "DOC";
 }
 
@@ -118,7 +209,7 @@ function parseTeamFromRealisation(text) {
   return out;
 }
 
-// 6. Boucle principale d'extraction
+// 6. Boucle principale d'extraction (v11.1 — corrigée)
 async function extractAll() {
   if (!state.pdf) throw new Error("PDF non chargé.");
   if (!ZONES) throw new Error("Zones non chargées.");
@@ -168,15 +259,17 @@ async function extractAll() {
         const key = techKey(tech);
         state.countsByTechId.set(key, (state.countsByTechId.get(key) || 0) + 1);
       }
+
+      console.log(`[EXTRACT] p.${p} → BT ${id} | badges: [${currentBT.badges}] | objet: "${currentBT.objet?.substring(0, 60)}"`);
     } 
     // Si ce n'est pas une page BT, c'est une pièce jointe du BT précédent
     else if (currentBT) {
-      const headerText = await extractHeaderArea(page);
-      const type = await detectDocTypeFromHeader(page, headerText);
+      const type = await detectDocType(page);
       currentBT.docs.push({ page: p, type });
+      console.log(`[EXTRACT] p.${p} → Annexe ${type} rattachée à ${currentBT.id}`);
       
-      // Recalculer les badges si le document apporte une info supplémentaire
-      currentBT.badges = detectBadgesForBT(currentBT);
+      // NOTE v11.1 : On ne recalcule PAS les badges ici.
+      // Les badges sont basés uniquement sur l'objet du BT, pas sur les annexes.
     }
   }
 
