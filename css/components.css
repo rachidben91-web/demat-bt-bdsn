@@ -1,10 +1,10 @@
-/* css/components.css — DEMAT-BT v11.0.0 — 15/02/2026
-   Classes CSS pour les composants partagés (remplace les style.cssText dans le JS)
+/* css/components.css — DEMAT-BT v11.0.0 — 16/02/2026
+   Classes CSS pour les composants partagés et nouveaux types de docs
 */
-/* ===============================
-   PDF Day Premium Display
-   =============================== */
 
+/* ===============================
+   PDF Day Premium Display (Topbar)
+   =============================== */
 .pdf-day-wrapper {
   display: flex;
   flex-direction: column;
@@ -15,7 +15,7 @@
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.6px;
-  color: #64748b; /* gris élégant */
+  color: #64748b;
 }
 
 .pdf-day-badge {
@@ -82,35 +82,34 @@
 }
 
 /* =====================
-   PTC / PTD BADGES
+   PTC / PTD BADGES (Précision terrain)
    ===================== */
 .ptc-ptd-badge {
   display: inline-block;
-  padding: 2px 6px;
+  padding: 2px 8px;
   border-radius: 999px;
-  font-size: 9px;
-  font-weight: 700;
-  margin-left: 3px;
-  border: 1px solid;
+  font-size: 10px;
+  font-weight: 800;
+  border: 1.5px solid;
 }
 .ptc-ptd--ptc {
-  background: #3b82f615;
-  color: #3b82f6;
+  background: #dbeafe;
+  color: #1e40af;
   border-color: #3b82f6;
 }
 .ptc-ptd--ptd {
-  background: #f59e0b15;
-  color: #f59e0b;
+  background: #fef3c7;
+  color: #92400e;
   border-color: #f59e0b;
 }
 .ptc-ptd--both {
-  background: #10b98115;
-  color: #10b981;
+  background: #dcfce7;
+  color: #166534;
   border-color: #10b981;
 }
 
 /* =====================
-   DOC BUTTONS (AT, PROC, PLAN, etc.)
+   DOC BUTTONS (Précision des types)
    ===================== */
 .doc-btn {
   display: inline-flex;
@@ -136,103 +135,5 @@
 .doc-btn__label { font-weight: 800; }
 .doc-btn__page { opacity: 0.7; font-size: 11px; }
 
-/* Color variants via CSS custom property */
-.doc-btn--bt     { border-color: #1e293b; color: #1e293b; }
-.doc-btn--at     { border-color: #059669; color: #059669; }
-.doc-btn--proc   { border-color: #2563eb; color: #2563eb; }
-.doc-btn--plan   { border-color: #7c3aed; color: #7c3aed; }
-.doc-btn--photo  { border-color: #dc2626; color: #dc2626; }
-.doc-btn--street { border-color: #ea580c; color: #ea580c; }
-.doc-btn--doc    { border-color: #64748b; color: #64748b; }
-
-/* =====================
-   DOC BADGES (comptage par type)
-   ===================== */
-.doc-badges {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.doc-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  border: 1.5px solid;
-  transition: var(--transition);
-  background: color-mix(in srgb, var(--doc-color) 10%, transparent);
-  color: var(--doc-color);
-  border-color: var(--doc-color);
-}
-.doc-badge--strong {
-  background: linear-gradient(135deg, var(--txt) 0%, #334155 100%);
-  color: #fff;
-  border-color: var(--txt);
-}
-.doc-badge__count { opacity: 0.7; }
-
-/* =====================
-   BT META (shared metadata display)
-   ===================== */
-.bt-meta {
-  font-size: 13px;
-  color: var(--muted);
-  margin-bottom: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-weight: 500;
-}
-.bt-meta > div {
-  line-height: 1.5;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* =====================
-   BRIEF CARD TITLE
-   ===================== */
-.briefCard__title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
-}
-
-/* =====================
-   BTCARD TOP
-   ===================== */
-.btTop__left {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-/* =====================
-   TIMELINE BT BLOCKS
-   ===================== */
-.timeline-bt-id {
-  font-weight: 800;
-  font-size: 11px;
-  color: #fff;
-  line-height: 1.2;
-}
-.timeline-bt-type {
-  font-size: 9px;
-  font-weight: 700;
-  color: rgba(255,255,255,0.95);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  line-height: 1.2;
-}
-.timeline-bt-time {
-  font-size: 8px;
-  color: rgba(255,255,255,0.85);
-  margin-top: 2px;
-  font-weight: 600;
-}
+/* Variantes de couleurs précises basées sur DOC_TYPES_CONFIG */
+.doc-btn--bt     { border-color: #1e293b; color: #1e293
