@@ -1,89 +1,141 @@
-/* js/export.js — DEMAT-BT v11.0.0 — 15/02/2026
-   Export PDF : BT individuel + journée complète technicien
-   Nécessite pdf-lib (chargé via CDN dans index.html)
+/* js/export.js — DEMAT-BT v11.0.0 — 16/02/2026
+   Génération des exports PDF (Unitaire ou Journée complète)
+   Assemble les pages extraites (BT + Pièces jointes) en un fichier unique.
 */
 
-async function exportBTPDF() {
-  const bt = state.modal.currentBT;
-  if (!bt || !state.pdfFile) {
-    alert("Aucun BT sélectionné ou PDF non disponible.");
-    return;
+// S'assure que jsPDF est disponible
+function ensureJsPDF() {
+  if (!window.jspdf) {
+    throw new Error("La librairie jsPDF n'est pas chargée.");
   }
+  return new window.jspdf.jsPDF({
+    orientation: "p",
+    unit: "mm",
+    format: "a4"
+  });
+}
+
+/**
+ * Génère un PDF pour un seul BT (incluant toutes ses pièces jointes).
+ */
+async function generateSingleBTPDF(bt) {
+  if (!bt || !state.pdf) return;
 
   try {
-    const { PDFDocument } = PDFLib;
-    const existingPdfBytes = await state.pdfFile.arrayBuffer();
-    const srcDoc = await PDFDocument.load(existingPdfBytes);
-    const newDoc = await PDFDocument.create();
+    const docName = `BT_${bt.id}.pdf`;
+    setProgress(0, `Génération de ${docName}...`);
 
-    const pages = bt.docs.map(d => d.page - 1); // 0-indexed
-    const copiedPages = await newDoc.copyPages(srcDoc, pages);
-    copiedPages.forEach(p => newDoc.addPage(p));
+    const pdf = ensureJsPDF();
+    await addBTToPDF(pdf, bt, true); // true = premier ajout (pas de addPage initial)
 
-    const pdfBytes = await newDoc.save();
-    const blob = new Blob([pdfBytes], { type: "application/pdf" });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${bt.id}.pdf`;
-    a.click();
-    URL.revokeObjectURL(url);
-
-    console.log("[EXPORT] BT exporté ✅", bt.id);
+    pdf.save(docName);
+    setProgress(100, `Export terminé : ${docName}`);
+    setTimeout(() => setProgress(0, "Prêt"), 3000);
   } catch (e) {
-    console.error("[EXPORT] Erreur:", e);
-    alert("Erreur lors de l'export. Voir la console.");
+    console.error("Erreur export BT:", e);
+    setProgress(0, "Erreur lors de l'export du BT.");
   }
 }
 
-async function exportDayPDF() {
-  if (!state.filters.techId || !state.pdfFile) {
-    alert("Sélectionne un technicien et charge un PDF d'abord.");
-    return;
-  }
+/**
+ * Génère un PDF complet pour toute une liste de BT (Export Journée).
+ */
+async function generateFullDayPDF(btList) {
+  if (!btList || btList.length === 0 || !state.pdf) return;
 
   try {
-    const filtered = filterBTs();
-    if (filtered.length === 0) {
-      alert("Aucun BT pour ce technicien.");
-      return;
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const docName = `Export_Journee_${dateStr}.pdf`;
+    
+    const pdf = ensureJsPDF();
+    let isFirstPage = true;
+
+    for (let i = 0; i < btList.length; i++) {
+      const bt = btList[i];
+      const pct = Math.round((i / btList.length) * 100);
+      setProgress(pct, `Export BT ${bt.id} (${i + 1}/${btList.length})...`);
+
+      // Ajout des pages du BT au document global
+      await addBTToPDF(pdf, bt, isFirstPage);
+      
+      // Après le premier BT, isFirstPage sera toujours faux pour forcer addPage()
+      if (bt.docs.length > 0) isFirstPage = false;
     }
 
-    const { PDFDocument } = PDFLib;
-    const existingPdfBytes = await state.pdfFile.arrayBuffer();
-    const srcDoc = await PDFDocument.load(existingPdfBytes);
-    const newDoc = await PDFDocument.create();
-
-    // Collecter toutes les pages de tous les BT du technicien
-    const allPages = [];
-    for (const bt of filtered) {
-      for (const doc of bt.docs || []) {
-        if (!allPages.includes(doc.page - 1)) allPages.push(doc.page - 1);
-      }
-    }
-    allPages.sort((a, b) => a - b);
-
-    const copiedPages = await newDoc.copyPages(srcDoc, allPages);
-    copiedPages.forEach(p => newDoc.addPage(p));
-
-    const pdfBytes = await newDoc.save();
-    const blob = new Blob([pdfBytes], { type: "application/pdf" });
-    const url = URL.createObjectURL(blob);
-
-    const techs = window.TECHNICIANS || [];
-    const tech = techs.find(x => techKey(x) === state.filters.techId);
-    const techName = tech ? tech.name.replace(/\s+/g, "_") : "technicien";
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `Journee_${techName}_${filtered.length}BT.pdf`;
-    a.click();
-    URL.revokeObjectURL(url);
-
-    console.log("[EXPORT] Journée exportée ✅", filtered.length, "BT");
+    setProgress(100, "Finalisation du fichier PDF...");
+    pdf.save(docName);
+    
+    setProgress(100, `Export terminé : ${btList.length} BT exportés.`);
+    setTimeout(() => setProgress(0, "Prêt"), 3000);
   } catch (e) {
-    console.error("[EXPORT] Erreur:", e);
-    alert("Erreur lors de l'export. Voir la console.");
+    console.error("Erreur export Journée:", e);
+    setProgress(0, "Erreur lors de l'export global.");
   }
+}
+
+/**
+ * Fonction interne : Ajoute toutes les pages d'un BT dans l'instance jsPDF en cours.
+ */
+async function addBTToPDF(pdfDoc, bt, isFirstDocOfPdf) {
+  // On trie les documents par ordre de page pour respecter la chronologie du PDF source
+  const sortedDocs = [...bt.docs].sort((a, b) => a.page - b.page);
+
+  for (let i = 0; i < sortedDocs.length; i++) {
+    const doc = sortedDocs[i];
+    
+    // Si ce n'est pas la toute première page du fichier PDF généré, on ajoute une page blanche
+    if (!isFirstDocOfPdf || i > 0) {
+      pdfDoc.addPage();
+    }
+
+    // 1. Rendu de la page PDF originale en image haute qualité via Canvas
+    const imgData = await renderPageToDataURL(doc.page);
+
+    // 2. Insertion de l'image dans le PDF (A4 : 210x297mm)
+    // On laisse une petite marge pour l'en-tête ajouté
+    const pageWidth = 210;
+    const pageHeight = 297;
+    pdfDoc.addImage(imgData, "JPEG", 0, 10, pageWidth, pageHeight - 10);
+
+    // 3. Ajout d'un bandeau d'identification en haut de page
+    // Utile pour savoir de quel BT il s'agit quand on imprime tout
+    addPageHeader(pdfDoc, bt, doc);
+  }
+}
+
+/**
+ * Ajoute un petit en-tête texte sur la page PDF générée.
+ */
+function addPageHeader(pdfDoc, bt, doc) {
+  const config = DOC_TYPES_CONFIG[doc.type] || DOC_TYPES_CONFIG.DOC;
+  
+  pdfDoc.setFontSize(9);
+  pdfDoc.setTextColor(100); // Gris foncé
+  
+  // Texte gauche : N° BT
+  pdfDoc.text(`${bt.id}`, 10, 6);
+  
+  // Texte droit : Type de document (ex: PLAN, FOR-113...)
+  // On utilise la couleur configurée dans state.js pour le texte si possible, sinon noir
+  pdfDoc.setTextColor(0); 
+  pdfDoc.setFont("helvetica", "bold");
+  pdfDoc.text(`${config.label}`, 200, 6, { align: "right" });
+}
+
+/**
+ * Convertit une page du PDF source (state.pdf) en image Base64 via un Canvas temporaire.
+ */
+async function renderPageToDataURL(pageNum) {
+  const page = await state.pdf.getPage(pageNum);
+  const viewport = page.getViewport({ scale: 2 }); // Scale 2 pour une bonne qualité d'impression
+
+  const canvas = document.createElement("canvas");
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  
+  const ctx = canvas.getContext("2d");
+  await page.render({ canvasContext: ctx, viewport }).promise;
+
+  // Compression JPEG 0.75 pour un bon compromis poids/qualité
+  return canvas.toDataURL("image/jpeg", 0.75);
 }
