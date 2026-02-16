@@ -1,91 +1,119 @@
-/* js/ui/modal.js — DEMAT-BT v11.0.0 — 15/02/2026
-   Modal viewer : affichage page PDF, navigation, export
+/* js/ui/modal.js — DEMAT-BT v11.0.0 — 16/02/2026
+   Modal viewer : affichage page PDF, navigation et styles dynamiques
 */
 
+// Ouvre la modal avec le BT et la page demandée
 function openModal(bt, pageNum) {
   state.modal.open = true;
   state.modal.currentBT = bt;
   state.modal.currentPage = pageNum;
 
   const modal = $("modal");
-  if (modal) modal.setAttribute("aria-hidden", "false");
-
-  const title = $("modalTitle");
-  if (title) title.textContent = `${bt.id} — Page ${pageNum}`;
-
-  const subtitle = $("modalSubtitle");
-  if (subtitle) subtitle.textContent = bt.objet || "";
+  if (modal) {
+    modal.setAttribute("aria-hidden", "false");
+    modal.classList.add("modal--active"); // Assure la visibilité CSS
+  }
 
   renderPage(pageNum);
-  updateModalNavigation();
+  updateModalUI();
 }
 
+// Ferme la modal
 function closeModal() {
   state.modal.open = false;
   state.modal.currentBT = null;
 
   const modal = $("modal");
-  if (modal) modal.setAttribute("aria-hidden", "true");
+  if (modal) {
+    modal.setAttribute("aria-hidden", "true");
+    modal.classList.remove("modal--active");
+  }
 }
 
-function updateModalNavigation() {
+// Met à jour les titres, boutons et infos selon le document affiché
+function updateModalUI() {
   const bt = state.modal.currentBT;
   if (!bt) return;
 
   const currentPage = state.modal.currentPage;
-  const btPages = bt.docs.map(d => d.page);
-  const minPage = Math.min(...btPages);
-  const maxPage = Math.max(...btPages);
-
+  // On récupère tous les numéros de pages associés à ce BT, triés
+  const sortedPages = bt.docs.map(d => d.page).sort((a, b) => a - b);
+  
+  // Navigation
   const btnPrev = $("btnPrevPage");
   const btnNext = $("btnNextPage");
-  if (btnPrev) btnPrev.disabled = currentPage <= minPage;
-  if (btnNext) btnNext.disabled = currentPage >= maxPage;
+  const currentIndex = sortedPages.indexOf(currentPage);
+  
+  if (btnPrev) btnPrev.disabled = currentIndex <= 0;
+  if (btnNext) btnNext.disabled = currentIndex >= sortedPages.length - 1;
 
+  // Infos du document courant (Type, Couleur, Icone)
+  const currentDoc = bt.docs.find(d => d.page === currentPage);
+  // Fallback sur DOC si type inconnu
+  const config = currentDoc ? (DOC_TYPES_CONFIG[currentDoc.type] || DOC_TYPES_CONFIG.DOC) : DOC_TYPES_CONFIG.DOC;
+
+  // Mise à jour du Titre avec le style (Couleur/Icône)
+  const title = $("modalTitle");
+  if (title) {
+    // Utilisation de innerHTML pour colorer le type de doc
+    title.innerHTML = `
+      <span style="opacity:0.6">${bt.id}</span>
+      <span style="margin:0 8px; opacity:0.3">/</span>
+      <span style="color:${config.color}; font-weight:700;">
+        ${config.icon} ${config.label}
+      </span>
+    `;
+  }
+
+  // Sous-titre (Objet du BT)
+  const subtitle = $("modalSubtitle");
+  if (subtitle) subtitle.textContent = bt.objet || "";
+
+  // Info pagination en bas
   const info = $("modalInfo");
   if (info) {
-    const doc = bt.docs.find(d => d.page === currentPage);
-    const config = doc ? DOC_TYPES_CONFIG[doc.type] : null;
-    info.textContent = config
-      ? `${config.icon} ${config.desc} — Page ${currentPage} sur ${btPages.length} pages`
-      : `Page ${currentPage}`;
+    info.textContent = `Page ${currentIndex + 1} sur ${sortedPages.length} — ${config.desc}`;
   }
 }
 
+// Page précédente
 function prevPage() {
   const bt = state.modal.currentBT;
   if (!bt) return;
-  const pages = bt.docs.map(d => d.page).sort((a, b) => a - b);
-  const idx = pages.indexOf(state.modal.currentPage);
+  
+  const sortedPages = bt.docs.map(d => d.page).sort((a, b) => a - b);
+  const idx = sortedPages.indexOf(state.modal.currentPage);
+  
   if (idx > 0) {
-    state.modal.currentPage = pages[idx - 1];
+    state.modal.currentPage = sortedPages[idx - 1];
     renderPage(state.modal.currentPage);
-    updateModalNavigation();
-    const title = $("modalTitle");
-    if (title) title.textContent = `${bt.id} — Page ${state.modal.currentPage}`;
+    updateModalUI();
   }
 }
 
+// Page suivante
 function nextPage() {
   const bt = state.modal.currentBT;
   if (!bt) return;
-  const pages = bt.docs.map(d => d.page).sort((a, b) => a - b);
-  const idx = pages.indexOf(state.modal.currentPage);
-  if (idx < pages.length - 1) {
-    state.modal.currentPage = pages[idx + 1];
+  
+  const sortedPages = bt.docs.map(d => d.page).sort((a, b) => a - b);
+  const idx = sortedPages.indexOf(state.modal.currentPage);
+  
+  if (idx < sortedPages.length - 1) {
+    state.modal.currentPage = sortedPages[idx + 1];
     renderPage(state.modal.currentPage);
-    updateModalNavigation();
-    const title = $("modalTitle");
-    if (title) title.textContent = `${bt.id} — Page ${state.modal.currentPage}`;
+    updateModalUI();
   }
 }
 
+// Rendu PDF via Canvas
 async function renderPage(pageNum) {
   if (!state.pdf) return;
   try {
     const page = await state.pdf.getPage(pageNum);
+    // Scale 1.5 est souvent suffisant et plus performant que 2, mais tu peux garder 2
     const viewport = page.getViewport({ scale: 2 });
-    const canvas = $("canvas");
+    const canvas = $("canvas"); // Vérifie si l'ID est bien "canvas" ou "pdfCanvas" dans ton HTML
     if (!canvas) return;
 
     canvas.width = viewport.width;
@@ -95,5 +123,16 @@ async function renderPage(pageNum) {
     await page.render({ canvasContext: ctx, viewport }).promise;
   } catch (e) {
     console.error("[MODAL] Erreur rendu page", pageNum, e);
+  }
+}
+
+// Export PDF (Nécessite export.js chargé)
+async function exportBTPDF() {
+  const bt = state.modal.currentBT;
+  if (!bt) return;
+  if (typeof window.generateSingleBTPDF === "function") {
+    await window.generateSingleBTPDF(bt);
+  } else {
+    alert("Fonction d'export non chargée.");
   }
 }
