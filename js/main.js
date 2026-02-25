@@ -1,294 +1,309 @@
-/* js/main.js — DEMAT-BT v11.0.0 — 16/02/2026
-   Point d'entrée : initialisation, événements, orchestration du rendu
-   Mise à jour : Support synchronisé pour FOR-113, Plans et AT
-*/
+// js/main.js — DEMAT-BT v11.2.1 — 19/02/2026
+// Point d'entrée principal
+// FIX v11.2.0: renderAll alias, weather init, refreshAllViews
+// FIX v11.2.1: Modal event listeners + loadBadgeRules() + loadBadgeRules avant cache
 
-// -------------------------
-// UI Status helpers
-// -------------------------
-function setZonesStatus(msg) {
-  const el = $("zonesStatus");
-  const badge = $("zonesBadge");
-  if (el) el.textContent = msg;
-  if (badge) badge.classList.toggle("status--ok", msg === "OK");
-}
+document.addEventListener('DOMContentLoaded', () => {
+    console.log("🚀 DEMAT-BT v11.2.1 démarré.");
 
-function setPdfStatus(msg) {
-  const el = $("pdfStatus");
-  const badge = $("pdfBadge");
+    // ============================================================
+    // HELPERS UI attendus par pdf-extractor.js
+    // ============================================================
+    window.setZonesStatus = function (msg) {
+        const el = document.getElementById('zonesStatus');
+        const badge = document.getElementById('zonesBadge');
+        if (el) el.textContent = msg;
+        if (badge) badge.classList.toggle('status--ok', msg === 'OK');
+    };
+    window.setPdfStatus = function (msg) {
+        const el = document.getElementById('pdfStatus');
+        const badge = document.getElementById('pdfBadge');
+        if (el) el.textContent = msg;
+        const ok = msg && msg !== 'Aucun PDF' && msg !== 'Aucun PDF chargé' && !msg.toLowerCase().includes('erreur');
+        if (badge) badge.classList.toggle('status--loaded', !!ok);
+    };
+    window.setProgress = function (pct, msg) {
+        const bar = document.getElementById('progBar');
+        const m = document.getElementById('progMsg');
+        const badge = document.getElementById('progressBadge');
+        if (bar) bar.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+        if (m && msg != null) m.textContent = msg;
+        if (badge) {
+            const active = msg && (msg.includes('Analyse') || msg.includes('Extraction') || msg.includes('Chargement'));
+            const complete = msg && (msg.includes('Terminé') || msg.includes('détectés'));
+            badge.classList.toggle('status--active', !!active);
+            badge.classList.toggle('status--complete', !!complete);
+        }
+    };
+    window.setExtractEnabled = function (enabled) {
+        const btn = document.getElementById('btnExtract');
+        if (!btn) return;
+        btn.disabled = !enabled;
+        btn.classList.toggle('btn--disabled', !enabled);
+    };
 
-  if (el) {
-    const day = extractDayFromFilename(msg);
+    // ============================================================
+    // 1. INITIALISATION DES MODULES & DONNÉES
+    // ============================================================
 
-    if (day) {
-      el.innerHTML = `
-        <div class="pdf-day-wrapper">
-          <div class="pdf-day-label">JOURNÉE</div>
-          <div class="pdf-day-badge">
-            <span class="pdf-day-icon">📅</span>
-            <span>${day}</span>
-          </div>
-        </div>
-      `;
-    } else {
-      el.textContent = msg.includes(".pdf") && msg.length > 30
-        ? msg.substring(0, 27) + "..." : msg;
+    // Initialiser l'état global
+    if (window.State && window.State.init) window.State.init();
+
+    // ── MÉTÉO ──────────────────────────────────────────────────
+    if (typeof updateDateTime === 'function') {
+        updateDateTime();
+        setInterval(updateDateTime, 1000);
+        console.log("[MAIN] ✅ DateTime initialisé");
     }
-  }
-
-  if (badge) {
-    badge.classList.toggle(
-      "status--loaded",
-      msg !== "Aucun PDF chargé" && msg !== "Erreur PDF" && msg.includes("pdf")
-    );
-  }
-}
-
-function setProgress(pct, msg) {
-  const bar = $("progBar");
-  const m = $("progMsg");
-  const badge = $("progressBadge");
-
-  if (bar) bar.style.width = `${Math.max(0, Math.min(100, pct))}%`;
-  if (m && msg != null) m.textContent = msg;
-
-  if (badge) {
-    const isActive = msg && (msg.includes("Analyse") || msg.includes("Extraction"));
-    const isComplete = msg && (msg.includes("Terminé") || msg.includes("BT détectés") || msg.includes("BT chargés") || msg.includes("Cache restauré"));
-    badge.classList.toggle("status--active", isActive);
-    badge.classList.toggle("status--complete", isComplete && !isActive);
-  }
-}
-
-function setExtractEnabled(enabled) {
-  const btn = $("btnExtract");
-  if (!btn) return;
-  btn.disabled = !enabled;
-  btn.classList.toggle("btn--disabled", !enabled);
-}
-
-// -------------------------
-// Vue management
-// -------------------------
-function setView(view) {
-  state.view = view;
-
-  // Toggle boutons
-  document.querySelectorAll("[data-view]").forEach(btn => {
-    btn.classList.toggle("seg__btn--active", btn.dataset.view === view);
-  });
-
-  // Toggle sections
-  const viewRef = $("viewReferent");
-  const viewBrief = $("viewBrief");
-  if (viewRef) viewRef.classList.toggle("view--active", view === "referent");
-  if (viewBrief) viewBrief.classList.toggle("view--active", view === "brief");
-
-  // Toggle flip mode for brief (Samsung Flip display)
-  document.body.classList.toggle("flip", view === "brief");
-
-  renderAll();
-}
-
-// -------------------------
-// Rendu global
-// -------------------------
-function renderAll() {
-  const filtered = filterBTs();
-
-  renderKpis(filtered);
-  buildTypeChips();
-  renderTechList();
-
-  if (state.view === "referent") {
-    const grid = $("btGrid");
-    const timeline = $("btTimeline");
-    if (grid && timeline) {
-      if (state.layout === "grid") {
-        grid.style.display = "grid";
-        timeline.style.display = "none";
-        renderGrid(filtered, grid);
-      } else {
-        grid.style.display = "none";
-        timeline.style.display = "flex";
-        renderTimeline(filtered, timeline);
-      }
-    }
-  } else {
-    renderBrief(filtered);
-  }
-}
-
-// -------------------------
-// Événements
-// -------------------------
-function wireEvents() {
-  // Recherche
-  const search = $("searchInput");
-  if (search) {
-    search.addEventListener("input", () => {
-      state.filters.q = search.value;
-      renderAll();
-    });
-  }
-
-  // Tech select
-  const sel = $("techSelect");
-  if (sel) {
-    sel.addEventListener("change", () => {
-      state.filters.techId = sel.value || "";
-      renderAll();
-    });
-  }
-
-  // Vues Référent / Brief
-  document.querySelectorAll("[data-view]").forEach(btn => {
-    btn.addEventListener("click", () => setView(btn.dataset.view));
-  });
-
-  // Layout Grid / Timeline
-  document.querySelectorAll("[data-layout]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const layout = btn.dataset.layout;
-      state.layout = layout;
-      document.querySelectorAll("[data-layout]").forEach(b => {
-        b.classList.toggle("seg__btn--active", b.dataset.layout === layout);
-      });
-      renderAll();
-    });
-  });
-
-  // Import PDF
-  const input = $("pdfFile");
-  if (input) {
-    input.addEventListener("change", async () => {
-      const f = input.files && input.files[0];
-      if (!f) return;
-      try {
-        setExtractEnabled(false);
-        setPdfStatus(f.name);
-        setProgress(0, "Chargement PDF…");
-        await ensurePdfJs();
-        state.pdfFile = f;
-        state.pdfName = f.name;
-        const buf = await f.arrayBuffer();
-        const loadingTask = window.pdfjsLib.getDocument({ data: buf, stopAtErrors: false, disableAutoFetch: true });
-        state.pdf = await loadingTask.promise;
-        state.totalPages = state.pdf.numPages;
-        console.log("[DEMAT-BT] PDF chargé ✅", state.totalPages, "pages");
-        setProgress(0, `PDF chargé (${state.totalPages} pages).`);
-        setExtractEnabled(true);
-      } catch (e) {
-        console.error(e);
-        setPdfStatus("Erreur PDF");
-        setProgress(0, "Erreur chargement PDF (voir console).");
-        setExtractEnabled(false);
-      }
-    });
-  }
-
-  // Bouton Extraire
-  const btnExtract = $("btnExtract");
-  if (btnExtract) {
-    btnExtract.addEventListener("click", async () => {
-      try {
-        if (!state.pdf) { setProgress(0, "Choisis d'abord un PDF."); return; }
-        setExtractEnabled(false);
-        setProgress(0, "Extraction en cours…");
-        await extractAll();
-      } catch (e) {
-        console.error(e);
-        setProgress(0, "Erreur extraction (voir console).");
-      } finally {
-        setExtractEnabled(!!state.pdf);
-      }
-    });
-  }
-
-  // Modal
-  const modal = $("modal");
-  if (modal) {
-    modal.addEventListener("click", (e) => {
-      if (e.target.hasAttribute("data-close") || e.target.classList.contains("modal__backdrop")) {
-        closeModal();
-      }
-    });
-  }
-  const btnPrev = $("btnPrevPage");
-  if (btnPrev) btnPrev.addEventListener("click", prevPage);
-  const btnNext = $("btnNextPage");
-  if (btnNext) btnNext.addEventListener("click", nextPage);
-
-  // Export
-  const btnExport = $("btnExportBt");
-  if (btnExport) btnExport.addEventListener("click", exportBTPDF);
-  const btnExportDay = $("btnExportDay");
-  if (btnExportDay) btnExportDay.addEventListener("click", exportDayPDF);
-
-  // Fullscreen
-  const btnFS = $("btnFullscreen");
-  if (btnFS) {
-    btnFS.addEventListener("click", () => {
-      if (!document.fullscreenElement) document.documentElement.requestFullscreen();
-      else document.exitFullscreen();
-    });
-  }
-
-  // Clear cache
-  const btnClearCache = $("btnClearCache");
-  if (btnClearCache) {
-    btnClearCache.addEventListener("click", async () => {
-      const info = getCacheInfo();
-      if (!info) { alert("Aucun cache à vider."); return; }
-      if (confirm(`Vider le cache ?\n${info.pdfName}\n${info.btCount} BT — ${info.age}`)) {
-        await clearCache();
-        state.bts = [];
-        state.countsByTechId = new Map();
-        state.pdf = null;
-        state.pdfFile = null;
-        setPdfStatus("Aucun PDF chargé");
-        setProgress(0, "Cache vidé.");
-        setExtractEnabled(false);
-        renderAll();
-      }
-    });
-  }
-}
-
-// -------------------------
-// Initialisation
-// -------------------------
-async function init() {
-  try {
-    setPdfStatus("Aucun PDF chargé");
-    setProgress(0, "Prêt.");
-    setExtractEnabled(false);
-
-    buildTypeChips();
-    wireEvents();
-
-    await loadZones();
-    await loadBadgeRules();
-
-    // Horloge + météo
-    updateDateTime();
-    setInterval(updateDateTime, 1000);
-    updateWeather();
-    setInterval(updateWeather, 600000);
-
-    // Tenter le cache
-    const cacheLoaded = await loadFromCache();
-    if (cacheLoaded) {
-      console.log("[INIT] Données chargées depuis le cache ✅");
-      if (state.pdf) setExtractEnabled(true);
+    if (typeof updateWeather === 'function') {
+        updateWeather();
+        setInterval(updateWeather, 10 * 60 * 1000);
+        console.log("[MAIN] ✅ Météo initialisée");
     }
 
-    setView("referent");
-  } catch (e) {
-    console.error(e);
-    setZonesStatus("Erreur");
-    setProgress(0, "Erreur init (voir console).");
-  }
-}
+    // Sidebar & Cache
+    if (window.Sidebar && window.Sidebar.init) window.Sidebar.init();
+    if (window.Cache && window.Cache.init) window.Cache.init();
 
-document.addEventListener("DOMContentLoaded", init);
+    // Charger zones.json
+    if (window.loadZones) window.loadZones().catch(err => console.error("[MAIN] Erreur zones:", err));
+
+    // ── FIX v11.2.1 : Charger les règles badges AVANT la restauration du cache ──
+    // Sans ça, BADGE_RULES reste null → timeline affiche tout en "AUTRES"
+    const badgeRulesReady = (typeof loadBadgeRules === 'function')
+        ? loadBadgeRules().then(() => console.log("[MAIN] ✅ Badge rules chargées"))
+                          .catch(err => console.warn("[MAIN] ⚠️ Badge rules non chargées:", err))
+        : Promise.resolve();
+
+    // ============================================================
+    // 2. FONCTIONS DE RENDU GLOBAL
+    // ============================================================
+
+    function refreshAllViews() {
+        console.log("[MAIN] refreshAllViews()");
+
+        const filtered = (typeof filterBTs === 'function') ? filterBTs() : (state.bts || []);
+
+        // Sidebar
+        if (typeof renderKpis === 'function') renderKpis(filtered);
+        if (typeof buildTypeChips === 'function') buildTypeChips();
+        if (typeof renderTechList === 'function') renderTechList();
+
+        // Grille vignettes
+        const gridEl = document.getElementById('btGrid');
+        if (gridEl && typeof renderGrid === 'function') {
+            renderGrid(filtered, gridEl);
+        }
+
+        // Timeline / Catégories
+        if (typeof renderTimeline === 'function') {
+            renderTimeline(filtered);
+        }
+
+        // Brief (Flip)
+        if (typeof renderBrief === 'function') {
+            renderBrief(filtered);
+        }
+    }
+
+    // ── Alias globaux pour compatibilité ──
+    window.renderAll = refreshAllViews;
+    window.refreshAllViews = refreshAllViews;
+
+    // ============================================================
+    // 3. NAVIGATION (Référent / Brief / Support)
+    // ============================================================
+
+    window.switchView = function(viewName) {
+        console.log("Navigation vers :", viewName);
+
+        // Cacher toutes les vues
+        document.querySelectorAll('.view').forEach(el => {
+            el.style.display = 'none';
+            el.classList.remove('view--active');
+        });
+
+        // Désactiver tous les boutons
+        document.querySelectorAll('.seg__btn').forEach(btn => btn.classList.remove('seg__btn--active'));
+
+        // Afficher la vue demandée
+        let targetId = '';
+        if (viewName === 'referent') targetId = 'viewReferent';
+        else if (viewName === 'brief') targetId = 'viewBrief';
+        else if (viewName === 'support') targetId = 'viewSupport';
+
+        const targetEl = document.getElementById(targetId);
+        if (targetEl) {
+            targetEl.style.display = 'block';
+            targetEl.classList.add('view--active');
+        }
+
+        if (viewName === 'referent' || viewName === 'brief') {
+            const activeBtn = document.querySelector(`.seg__btn[data-view="${viewName}"]`);
+            if (activeBtn) activeBtn.classList.add('seg__btn--active');
+            document.body.classList.toggle('flip', viewName === 'brief');
+            refreshAllViews();
+        } else {
+            document.body.classList.remove('flip');
+        }
+
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    // Sous-vues (Vignettes / Catégories)
+    document.querySelectorAll('.seg__btn[data-layout]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.target.parentElement.querySelectorAll('.seg__btn').forEach(b => b.classList.remove('seg__btn--active'));
+            e.target.classList.add('seg__btn--active');
+
+            const layout = e.currentTarget.dataset.layout;
+            const gridEl = document.getElementById('btGrid');
+            const timelineEl = document.getElementById('btTimeline');
+
+            if (gridEl && timelineEl) {
+                if (layout === 'grid') {
+                    gridEl.style.display = 'grid';
+                    timelineEl.style.display = 'none';
+                } else {
+                    gridEl.style.display = 'none';
+                    timelineEl.style.display = 'block';
+                }
+            }
+        });
+    });
+
+    // ============================================================
+    // 4. ÉVÉNEMENTS GLOBAUX (Recherche, Filtres, PDF)
+    // ============================================================
+
+    // Recherche
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            state.filters.q = e.target.value;
+            refreshAllViews();
+        });
+    }
+
+    // Sélecteur Technicien
+    const techSelect = document.getElementById('techSelect');
+    if (techSelect) {
+        techSelect.addEventListener('change', (e) => {
+            state.filters.techId = e.target.value || "";
+            refreshAllViews();
+        });
+    }
+
+    // Import PDF
+    const pdfInput = document.getElementById('pdfFile');
+    if (pdfInput) {
+        pdfInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                const file = e.target.files[0];
+                if (window.PdfExtractor) {
+                    window.PdfExtractor.processFile(file).then(() => {
+                        refreshAllViews();
+                    });
+                }
+            }
+        });
+    }
+
+    // Bouton Extraire
+    const btnExtract = document.getElementById('btnExtract');
+    if (btnExtract) {
+        btnExtract.addEventListener('click', () => {
+            if (window.PdfExtractor) {
+                window.PdfExtractor.runExtraction().then(() => {
+                    refreshAllViews();
+                });
+            }
+        });
+    }
+
+    // Vider le Cache
+    const btnClearCache = document.getElementById('btnClearCache');
+    if (btnClearCache) {
+        btnClearCache.addEventListener('click', () => {
+            if (confirm("Attention : Cela effacera toutes les données importées (PDF, Zones). Continuer ?")) {
+                localStorage.clear();
+                location.reload();
+            }
+        });
+    }
+
+    // Fullscreen
+    const btnFullscreen = document.getElementById('btnFullscreen');
+    if (btnFullscreen) {
+        btnFullscreen.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                document.exitFullscreen();
+            }
+        });
+    }
+
+    // ============================================================
+    // 5. MODAL — Événements des boutons (FIX v11.2.1)
+    // ============================================================
+
+    // Bouton Page Précédente
+    const btnPrev = document.getElementById('btnPrevPage');
+    if (btnPrev) {
+        btnPrev.addEventListener('click', () => {
+            if (typeof prevPage === 'function') prevPage();
+        });
+    }
+
+    // Bouton Page Suivante
+    const btnNext = document.getElementById('btnNextPage');
+    if (btnNext) {
+        btnNext.addEventListener('click', () => {
+            if (typeof nextPage === 'function') nextPage();
+        });
+    }
+
+    // Bouton Export PDF
+    const btnExport = document.getElementById('btnExportBt');
+    if (btnExport) {
+        btnExport.addEventListener('click', () => {
+            if (typeof exportBTPDF === 'function') exportBTPDF();
+        });
+    }
+
+    // Bouton Fermer + Backdrop (tous les éléments data-close)
+    document.querySelectorAll('[data-close]').forEach(el => {
+        el.addEventListener('click', () => {
+            if (typeof closeModal === 'function') closeModal();
+        });
+    });
+
+    // Fermer modal avec Échap
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && state.modal && state.modal.open) {
+            if (typeof closeModal === 'function') closeModal();
+        }
+    });
+
+    // ============================================================
+    // 6. RESTAURATION DU CACHE AU DÉMARRAGE
+    // ============================================================
+
+    // On attend que les badge rules soient chargées AVANT de restaurer le cache
+    // Sinon la timeline affiche tout en "AUTRES"
+    badgeRulesReady.then(() => {
+        if (typeof loadFromCache === 'function') {
+            loadFromCache().then(restored => {
+                if (restored) {
+                    console.log("[MAIN] ✅ Cache restauré, lancement du rendu");
+                    refreshAllViews();
+                }
+            }).catch(err => console.warn("[MAIN] Cache non restauré:", err));
+        }
+
+        // Vue par défaut
+        switchView('referent');
+        console.log("[MAIN] ✅ Initialisation terminée");
+    });
+});
